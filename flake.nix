@@ -20,6 +20,7 @@
             cargo
             rustfmt
             clippy
+            cargo-tarpaulin
             just
             pkg-config
             openssl
