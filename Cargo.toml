@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "crates/cerebrum-core",
+    "crates/cerebrum",
+]
+resolver = "2"
