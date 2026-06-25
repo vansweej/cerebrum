@@ -1,6 +1,6 @@
 use crate::embedder::Embedder;
 use crate::error::Result;
-use crate::models::{MemoryEntry, MemoryId};
+use crate::models::{MemoryEntry, MemoryId, MemoryScope};
 use crate::traits::MemoryStore;
 use async_trait::async_trait;
 use parking_lot::RwLock;
@@ -112,6 +112,47 @@ impl MemoryStore for CortexMemory {
         // Score all memories by similarity
         let mut scored: Vec<_> = memories
             .values()
+            .filter_map(|entry| {
+                entry.embedding.as_ref().map(|embedding| {
+                    let similarity = Self::cosine_similarity(&query_embedding, embedding);
+                    // Combine similarity with salience for ranking
+                    let score = (similarity * 0.7) + (entry.salience * 0.3);
+                    (entry.clone(), score)
+                })
+            })
+            .collect();
+
+        // Sort by score (descending)
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Return top N
+        Ok(scored
+            .into_iter()
+            .take(limit)
+            .map(|(entry, _)| entry)
+            .collect())
+    }
+
+    async fn retrieve_by_scope(
+        &self,
+        query: &str,
+        scope: &MemoryScope,
+        limit: usize,
+    ) -> Result<Vec<MemoryEntry>> {
+        // Generate embedding for query
+        let query_embedding = self.embedder.embed(query).await?;
+
+        let memories = self.memories.read();
+
+        // If no memories, return empty
+        if memories.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Score all memories by similarity, filtering by scope
+        let mut scored: Vec<_> = memories
+            .values()
+            .filter(|entry| entry.scope.matches(scope))
             .filter_map(|entry| {
                 entry.embedding.as_ref().map(|embedding| {
                     let similarity = Self::cosine_similarity(&query_embedding, embedding);
@@ -286,5 +327,132 @@ mod tests {
         let c = vec![0.0, 1.0, 0.0];
         let similarity2 = CortexMemory::cosine_similarity(&a, &c);
         assert!(similarity2.abs() < 0.001);
+    }
+
+    #[tokio::test]
+    async fn test_cortex_retrieve_by_scope_global() {
+        let embedder: Arc<dyn Embedder> = Arc::new(crate::embedder::MockEmbedder::new());
+        let cortex = CortexMemory::new("/tmp/test_cortex", embedder)
+            .await
+            .expect("Failed to create CortexMemory");
+
+        let id1 = MemoryId::new();
+        let embedding = vec![0.1; 384];
+        let entry1 = MemoryEntry::builder(id1, "Global memory".to_string())
+            .scope(MemoryScope::Global)
+            .embedding(embedding.clone())
+            .build();
+
+        let id2 = MemoryId::new();
+        let entry2 = MemoryEntry::builder(id2, "User memory".to_string())
+            .scope(MemoryScope::User("user1".to_string()))
+            .embedding(embedding)
+            .build();
+
+        cortex.store(entry1).await.unwrap();
+        cortex.store(entry2).await.unwrap();
+
+        // Global scope should match all
+        let results = cortex
+            .retrieve_by_scope("memory", &MemoryScope::Global, 10)
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_cortex_retrieve_by_scope_user() {
+        let embedder: Arc<dyn Embedder> = Arc::new(crate::embedder::MockEmbedder::new());
+        let cortex = CortexMemory::new("/tmp/test_cortex", embedder)
+            .await
+            .expect("Failed to create CortexMemory");
+
+        let id1 = MemoryId::new();
+        let embedding = vec![0.1; 384];
+        let entry1 = MemoryEntry::builder(id1, "User1 memory".to_string())
+            .scope(MemoryScope::User("user1".to_string()))
+            .embedding(embedding.clone())
+            .build();
+
+        let id2 = MemoryId::new();
+        let entry2 = MemoryEntry::builder(id2, "User2 memory".to_string())
+            .scope(MemoryScope::User("user2".to_string()))
+            .embedding(embedding)
+            .build();
+
+        cortex.store(entry1).await.unwrap();
+        cortex.store(entry2).await.unwrap();
+
+        // User1 scope should only match user1 memories
+        let results = cortex
+            .retrieve_by_scope("memory", &MemoryScope::User("user1".to_string()), 10)
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].content, "User1 memory");
+    }
+
+    #[tokio::test]
+    async fn test_cortex_retrieve_by_scope_agent() {
+        let embedder: Arc<dyn Embedder> = Arc::new(crate::embedder::MockEmbedder::new());
+        let cortex = CortexMemory::new("/tmp/test_cortex", embedder)
+            .await
+            .expect("Failed to create CortexMemory");
+
+        let id1 = MemoryId::new();
+        let embedding = vec![0.1; 384];
+        let entry1 = MemoryEntry::builder(id1, "Agent1 memory".to_string())
+            .scope(MemoryScope::Agent("agent1".to_string()))
+            .embedding(embedding.clone())
+            .build();
+
+        let id2 = MemoryId::new();
+        let entry2 = MemoryEntry::builder(id2, "Agent2 memory".to_string())
+            .scope(MemoryScope::Agent("agent2".to_string()))
+            .embedding(embedding)
+            .build();
+
+        cortex.store(entry1).await.unwrap();
+        cortex.store(entry2).await.unwrap();
+
+        // Agent1 scope should only match agent1 memories
+        let results = cortex
+            .retrieve_by_scope("memory", &MemoryScope::Agent("agent1".to_string()), 10)
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].content, "Agent1 memory");
+    }
+
+    #[tokio::test]
+    async fn test_cortex_retrieve_by_scope_session() {
+        let embedder: Arc<dyn Embedder> = Arc::new(crate::embedder::MockEmbedder::new());
+        let cortex = CortexMemory::new("/tmp/test_cortex", embedder)
+            .await
+            .expect("Failed to create CortexMemory");
+
+        let id1 = MemoryId::new();
+        let embedding = vec![0.1; 384];
+        let entry1 = MemoryEntry::builder(id1, "Session1 memory".to_string())
+            .scope(MemoryScope::Session("session1".to_string()))
+            .embedding(embedding.clone())
+            .build();
+
+        let id2 = MemoryId::new();
+        let entry2 = MemoryEntry::builder(id2, "Session2 memory".to_string())
+            .scope(MemoryScope::Session("session2".to_string()))
+            .embedding(embedding)
+            .build();
+
+        cortex.store(entry1).await.unwrap();
+        cortex.store(entry2).await.unwrap();
+
+        // Session1 scope should only match session1 memories
+        let results = cortex
+            .retrieve_by_scope("memory", &MemoryScope::Session("session1".to_string()), 10)
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].content, "Session1 memory");
     }
 }

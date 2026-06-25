@@ -1,5 +1,5 @@
 use crate::error::Result;
-use crate::models::{MemoryEntry, MemoryId};
+use crate::models::{MemoryEntry, MemoryId, MemoryScope};
 use async_trait::async_trait;
 
 /// Trait for embedding text into vector space.
@@ -17,6 +17,14 @@ pub trait MemoryStore: Send + Sync {
 
     /// Retrieve memories matching a query, up to a limit.
     async fn retrieve(&self, query: &str, limit: usize) -> Result<Vec<MemoryEntry>>;
+
+    /// Retrieve memories matching a query and scope, up to a limit.
+    async fn retrieve_by_scope(
+        &self,
+        query: &str,
+        scope: &MemoryScope,
+        limit: usize,
+    ) -> Result<Vec<MemoryEntry>>;
 
     /// Delete a memory by ID.
     async fn delete(&self, id: &MemoryId) -> Result<()>;
