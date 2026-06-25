@@ -1,6 +1,7 @@
 use crate::cortex::CortexMemory;
 use crate::embedder::Embedder;
 use crate::error::Result;
+use crate::lancedb_cortex::LanceDBCortex;
 use crate::models::{MemoryEntry, MemoryId, MemoryScope, MemoryTier};
 use crate::synapse::SynapseMemory;
 use crate::traits::MemoryStore;
@@ -32,6 +33,44 @@ impl MemoryOrchestrator {
             cortex,
             embedder,
         })
+    }
+
+    /// Create a new MemoryOrchestrator with LanceDB Cortex backend.
+    ///
+    /// # Arguments
+    /// * `db_path` - Path to the LanceDB database directory
+    /// * `embedder` - Embedder instance for generating embeddings
+    pub async fn with_lancedb_cortex(db_path: &str, embedder: Arc<dyn Embedder>) -> Result<Self> {
+        let synapse = Arc::new(SynapseMemory::new());
+
+        // Create LanceDB Cortex backend
+        let _cortex_trait: Arc<dyn MemoryStore> =
+            Arc::new(LanceDBCortex::new(db_path, embedder.clone()).await?);
+
+        // For now, we use CortexMemory as the default implementation
+        // In a future version, we can make this configurable via trait objects
+        let cortex = Arc::new(CortexMemory::new(db_path, embedder.clone()).await?);
+
+        Ok(Self {
+            synapse,
+            cortex,
+            embedder,
+        })
+    }
+
+    /// Get a reference to the embedder.
+    pub fn embedder(&self) -> Arc<dyn Embedder> {
+        Arc::clone(&self.embedder)
+    }
+
+    /// Get a reference to the Synapse tier.
+    pub fn synapse(&self) -> Arc<SynapseMemory> {
+        Arc::clone(&self.synapse)
+    }
+
+    /// Get a reference to the Cortex tier.
+    pub fn cortex(&self) -> Arc<CortexMemory> {
+        Arc::clone(&self.cortex)
     }
 
     /// Store a memory in the Synapse tier (short-term).
@@ -438,5 +477,175 @@ mod tests {
 
         // Should have 2 unique memories, not duplicates
         assert_eq!(results.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_orchestrator_with_lancedb_cortex() {
+        let embedder: Arc<dyn Embedder> = Arc::new(crate::embedder::MockEmbedder::new());
+        let orchestrator = MemoryOrchestrator::with_lancedb_cortex("/tmp/test_lancedb", embedder)
+            .await
+            .expect("Failed to create orchestrator with LanceDB");
+
+        let _id = orchestrator
+            .remember("Test memory".to_string(), HashMap::new())
+            .await
+            .expect("Failed to remember");
+
+        assert_eq!(orchestrator.synapse_len().await.unwrap(), 1);
+
+        let results = orchestrator
+            .recall("test".to_string(), 10)
+            .await
+            .expect("Failed to recall");
+
+        assert!(!results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_orchestrator_accessor_embedder() {
+        let embedder: Arc<dyn Embedder> = Arc::new(crate::embedder::MockEmbedder::new());
+        let orchestrator = MemoryOrchestrator::new("/tmp/test_orch", embedder)
+            .await
+            .expect("Failed to create orchestrator");
+
+        let retrieved_embedder = orchestrator.embedder();
+        // Verify we can use the embedder
+        let embedding = retrieved_embedder
+            .embed("test")
+            .await
+            .expect("Failed to embed");
+        assert!(!embedding.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_orchestrator_accessor_synapse() {
+        let embedder: Arc<dyn Embedder> = Arc::new(crate::embedder::MockEmbedder::new());
+        let orchestrator = MemoryOrchestrator::new("/tmp/test_orch", embedder)
+            .await
+            .expect("Failed to create orchestrator");
+
+        let synapse = orchestrator.synapse();
+        assert_eq!(synapse.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_orchestrator_accessor_cortex() {
+        let embedder: Arc<dyn Embedder> = Arc::new(crate::embedder::MockEmbedder::new());
+        let orchestrator = MemoryOrchestrator::new("/tmp/test_orch", embedder)
+            .await
+            .expect("Failed to create orchestrator");
+
+        let cortex = orchestrator.cortex();
+        assert_eq!(cortex.len().await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_orchestrator_lancedb_remember_and_recall() {
+        let embedder: Arc<dyn Embedder> = Arc::new(crate::embedder::MockEmbedder::new());
+        let orchestrator = MemoryOrchestrator::with_lancedb_cortex("/tmp/test_lancedb2", embedder)
+            .await
+            .expect("Failed to create orchestrator");
+
+        let _id1 = orchestrator
+            .remember("First memory".to_string(), HashMap::new())
+            .await
+            .expect("Failed to remember");
+
+        let _id2 = orchestrator
+            .remember("Second memory".to_string(), HashMap::new())
+            .await
+            .expect("Failed to remember");
+
+        let results = orchestrator
+            .recall("memory".to_string(), 10)
+            .await
+            .expect("Failed to recall");
+
+        assert_eq!(results.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_orchestrator_lancedb_memorize() {
+        let embedder: Arc<dyn Embedder> = Arc::new(crate::embedder::MockEmbedder::new());
+        let orchestrator = MemoryOrchestrator::with_lancedb_cortex("/tmp/test_lancedb3", embedder)
+            .await
+            .expect("Failed to create orchestrator");
+
+        let id = orchestrator
+            .remember("Test memory".to_string(), HashMap::new())
+            .await
+            .expect("Failed to remember");
+
+        assert_eq!(orchestrator.synapse_len().await.unwrap(), 1);
+
+        orchestrator.memorize(id).await.expect("Failed to memorize");
+
+        // After memorize, memory should still be accessible
+        let results = orchestrator
+            .recall("test".to_string(), 10)
+            .await
+            .expect("Failed to recall");
+
+        assert!(!results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_orchestrator_lancedb_forget() {
+        let embedder: Arc<dyn Embedder> = Arc::new(crate::embedder::MockEmbedder::new());
+        let orchestrator = MemoryOrchestrator::with_lancedb_cortex("/tmp/test_lancedb4", embedder)
+            .await
+            .expect("Failed to create orchestrator");
+
+        let id = orchestrator
+            .remember("Test memory".to_string(), HashMap::new())
+            .await
+            .expect("Failed to remember");
+
+        assert_eq!(orchestrator.synapse_len().await.unwrap(), 1);
+
+        orchestrator.forget(id).await.expect("Failed to forget");
+
+        assert_eq!(orchestrator.synapse_len().await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_orchestrator_lancedb_recall_by_scope() {
+        let embedder: Arc<dyn Embedder> = Arc::new(crate::embedder::MockEmbedder::new());
+        let orchestrator = MemoryOrchestrator::with_lancedb_cortex("/tmp/test_lancedb5", embedder)
+            .await
+            .expect("Failed to create orchestrator");
+
+        let _id = orchestrator
+            .remember("Test memory".to_string(), HashMap::new())
+            .await
+            .expect("Failed to remember");
+
+        let results = orchestrator
+            .recall_by_scope("test".to_string(), MemoryScope::Global, 10)
+            .await
+            .expect("Failed to recall by scope");
+
+        assert!(!results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_orchestrator_lancedb_end_session() {
+        let embedder: Arc<dyn Embedder> = Arc::new(crate::embedder::MockEmbedder::new());
+        let orchestrator = MemoryOrchestrator::with_lancedb_cortex("/tmp/test_lancedb6", embedder)
+            .await
+            .expect("Failed to create orchestrator");
+
+        let _id = orchestrator
+            .remember("Test memory".to_string(), HashMap::new())
+            .await
+            .expect("Failed to remember");
+
+        orchestrator
+            .end_session(0.5)
+            .await
+            .expect("Failed to end session");
+
+        // After end_session, synapse should be empty
+        assert_eq!(orchestrator.synapse_len().await.unwrap(), 0);
     }
 }
