@@ -1,49 +1,98 @@
 # Cerebrum Roadmap
 
-This roadmap covers work **deferred beyond the initial build**. The initial build delivers a single `cerebrum` MCP server with two memory tiers — `synapse` (volatile, in-memory, per-session) and `cortex` (durable, LanceDB-backed, cross-session) — exposing four tools: `remember`, `recall` (blended across tiers), `memorize` (human-triggered promotion), and `forget`.
-
-Everything below is the **intelligence layer** — the genuinely novel research surface. None of it is in the initial build. Each item should go through a `spar` session before it is planned in and added to the implementation plan.
-
-> These are future directions, not a fixed sequence. More phases may be added here before any of this work begins.
+This roadmap covers work **beyond Phase 5**. Phases 1-5 deliver a fully-featured two-tier memory system with advanced features (promotion, decay, summarization, scope filtering). Phase 6 focuses on production hardening and persistence.
 
 ---
 
-## Intelligence layer
+## Phase 6: Production Hardening & LanceDB Integration
 
-### Automatic promotion (synapse $\to$ cortex)
-The initial build only promotes on **explicit human instruction** (the `memorize` tool). Automatic promotion lets the system itself decide a short-term memory has earned durability.
+**Status:** Planned (Ready to implement)
 
-- **Triggers to evaluate:** recency + frequency of access, explicit salience scoring, end-of-session flush, summarisation of a continuous session into a few durable facts.
-- **Risk:** re-introduces the salience-judgment problem deliberately avoided in the initial design. Any automatic policy must be auditable via provenance and reversible via `forget`.
-- **Design contract:** a `PromotionPolicy` trait deciding which synapse memories graduate, kept behind the same orchestrator so the tool surface does not change.
+Phase 6 transitions Cerebrum from a prototype with in-memory storage to a production-ready system with persistent vector database storage.
 
-### Decay & forgetting in cortex
-Long-term memory should not grow without bound or let stale facts outrank current ones.
+### Deliverables
 
-- Time-based down-weighting of `salience` at recall time.
-- Pruning or archival of low-salience, never-recalled memories.
-- Conflict resolution when a newer memory contradicts an older one (e.g. "user moved cities").
+- **LanceDB Integration** — Replace in-memory Cortex with persistent vector database
+- **FastEmbed Integration** — Real embeddings with BGE-small model (384-dim)
+- **Embedding Migration** — Tooling to handle embedding model changes
+- **Observability** — Structured logging, metrics, and tracing
+- **Error Handling & Resilience** — Retry logic, circuit breaker, graceful degradation
+- **Orchestrator Updates** — Support configurable backends
+- **Integration Tests** — 20 comprehensive tests for Phase 6 features
+- **Documentation** — Production deployment guide, LanceDB setup, observability guide
 
-### Summarisation on promote
-Rather than promoting verbatim conversation snippets, distil them into compact, self-contained facts before writing to cortex — reducing drift and storage while preserving provenance back to the source session.
+### Architecture Decisions
 
-### Identity & scope model
-The initial build scopes `synapse` per-session and `cortex` globally. A richer model is needed for multi-agent / multi-user deployments.
+See `docs/adr-phase-6.md` for detailed Architecture Decision Records:
+- **ADR-001:** LanceDB for Persistent Cortex Storage
+- **ADR-002:** FastEmbed for Real Embeddings
+- **ADR-003:** Embedding Migration Strategy
+- **ADR-004:** Error Handling and Resilience
 
-- Per-agent vs. per-user vs. global cortex scoping.
-- Isolation guarantees between identities.
-- Shared/organisational memory (cf. Mem0's org layer) available to multiple agents.
+### Implementation Plan
 
-### Real embedding strategy hardening
-The initial build commits to a local `fastembed` model (BGE-small, 384-dim). Future work:
+See `docs/phase-6-plan.md` for detailed 8-step implementation plan:
+1. LanceDB Integration Foundation
+2. FastEmbed Integration
+3. Embedding Migration Tooling
+4. Observability & Logging
+5. Error Handling & Resilience
+6. Orchestrator Updates
+7. Integration Tests
+8. Documentation & Release
 
-- Pluggable embedding backends (local model vs. remote API) behind the existing `Embedder` trait.
-- Migration tooling for when the embedding model — and therefore the cortex vector dimension — changes, since this requires rebuilding the LanceDB table.
-- Vendoring model weights in the nix flake for fully offline, reproducible builds.
+### Success Criteria
+
+- ✅ LanceDB Cortex fully functional and tested
+- ✅ FastEmbed embeddings working with BGE-small model
+- ✅ Embedding migration tooling available and tested
+- ✅ Comprehensive observability in place
+- ✅ Error handling and resilience patterns implemented
+- ✅ All 80 new tests passing
+- ✅ 90%+ code coverage maintained
+- ✅ Zero clippy warnings
+- ✅ Production deployment guide complete
+- ✅ Project at 100% completion (5 of 5 phases)
 
 ---
 
-## Guiding principles (apply to all intelligence layer work)
-1. **The agent must not see the seams.** Tiering stays an implementation detail; the tool surface (`remember`/`recall`/`memorize`/`forget`) should remain stable.
+## Phase 7+: Advanced Features & Scaling
+
+**Status:** Future (Post-Phase 6)
+
+After Phase 6 completes production hardening, future phases may include:
+
+### Intelligence Layer
+
+- **Multi-model embedding support** — Support multiple embedding models simultaneously
+- **Distributed deployment** — Multiple servers with shared Cortex
+- **Advanced analytics** — Memory usage patterns, agent insights
+- **Agent-specific optimization** — Per-agent memory tuning
+- **Conflict resolution** — Handle contradictory memories
+- **Semantic deduplication** — Identify and merge similar memories
+
+### Operational Features
+
+- **Docker containerization** — Container images for deployment
+- **Kubernetes manifests** — Helm charts for orchestration
+- **Monitoring and alerting** — Prometheus metrics, alerting rules
+- **Performance tuning** — Benchmarking, optimization
+- **Security hardening** — Authentication, encryption, audit logging
+
+### Research Directions
+
+- **Temporal reasoning** — Time-aware memory retrieval
+- **Causal inference** — Understanding memory relationships
+- **Active learning** — System-initiated clarification questions
+- **Memory compression** — Lossless compression of long-term memories
+- **Cross-agent learning** — Shared insights between agents
+
+---
+
+## Guiding Principles (All Phases)
+
+1. **The agent must not see the seams.** Tiering stays an implementation detail; the tool surface should remain stable.
 2. **Every durable memory carries provenance.** Automatic decisions must be auditable and reversible.
-3. **Spar before planning.** Each item here is a design question, not a mechanical task — challenge it before committing to an approach.
+3. **Backward compatibility.** New phases must not break existing MCP tools or agent integrations.
+4. **Production-ready quality.** All code must meet 90%+ coverage, zero clippy warnings, comprehensive tests.
+5. **Clear documentation.** Every phase includes architecture docs, ADRs, and deployment guides.
