@@ -10,6 +10,18 @@ impl MemoryId {
     pub fn new() -> Self {
         Self(Uuid::new_v4())
     }
+
+    /// Create a MemoryId from a string representation.
+    pub fn from_string(s: &str) -> crate::error::Result<Self> {
+        let uuid = Uuid::parse_str(s)
+            .map_err(|e| crate::error::CerebrumError::Validation(format!("Invalid UUID: {}", e)))?;
+        Ok(Self(uuid))
+    }
+
+    /// Convert to string representation.
+    pub fn to_string(&self) -> String {
+        self.0.to_string()
+    }
 }
 
 impl Default for MemoryId {
