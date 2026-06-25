@@ -143,6 +143,37 @@ impl CerebrumHandler {
         .with_title("End Session")
     }
 
+    /// Get the recall_by_scope tool definition (Phase 5)
+    fn recall_by_scope_tool() -> Tool {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query"
+                },
+                "scope": {
+                    "type": "string",
+                    "description": "Memory scope filter: 'global', 'user:<id>', 'agent:<id>', or 'session:<id>'"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of results to return (default: 10)",
+                    "minimum": 1,
+                    "maximum": 100
+                }
+            },
+            "required": ["query", "scope"]
+        });
+        let map = schema.as_object().cloned().unwrap_or_default();
+        Tool::new(
+            "recall_by_scope",
+            "Search memories filtered by scope (Phase 5 feature)",
+            map,
+        )
+        .with_title("Recall by Scope")
+    }
+
     /// Handle remember tool call
     async fn handle_remember(&self, arguments: Option<Value>) -> Result<CallToolResult, String> {
         let args = arguments.ok_or("Missing arguments for remember tool")?;
@@ -329,6 +360,79 @@ impl CerebrumHandler {
             }
         }
     }
+
+    /// Handle recall_by_scope tool call (Phase 5)
+    async fn handle_recall_by_scope(
+        &self,
+        arguments: Option<Value>,
+    ) -> Result<CallToolResult, String> {
+        let args = arguments.ok_or("Missing arguments for recall_by_scope tool")?;
+
+        let query = args
+            .get("query")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing required field: query")?
+            .to_string();
+
+        let scope_str = args
+            .get("scope")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing required field: scope")?;
+
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
+
+        // Parse scope string
+        let scope = if scope_str == "global" {
+            cerebrum_core::MemoryScope::Global
+        } else if let Some(user_id) = scope_str.strip_prefix("user:") {
+            cerebrum_core::MemoryScope::User(user_id.to_string())
+        } else if let Some(agent_id) = scope_str.strip_prefix("agent:") {
+            cerebrum_core::MemoryScope::Agent(agent_id.to_string())
+        } else if let Some(session_id) = scope_str.strip_prefix("session:") {
+            cerebrum_core::MemoryScope::Session(session_id.to_string())
+        } else {
+            return Ok(CallToolResult::error(vec![Annotated::new(
+                RawContent::text("Invalid scope format. Use 'global', 'user:<id>', 'agent:<id>', or 'session:<id>'".to_string()),
+                None,
+            )]));
+        };
+
+        match self.orchestrator.recall_by_scope(query, scope, limit).await {
+            Ok(results) => {
+                info!("Recall by scope found {} results", results.len());
+                let result_json: Vec<Value> = results
+                    .iter()
+                    .map(|entry| {
+                        json!({
+                            "id": entry.id.to_string(),
+                            "content": entry.content,
+                            "salience": entry.salience,
+                            "scope": entry.scope.as_str(),
+                            "tier": format!("{:?}", entry.tier),
+                            "timestamp": entry.timestamp
+                        })
+                    })
+                    .collect();
+
+                let response = json!({
+                    "success": true,
+                    "count": results.len(),
+                    "results": result_json
+                });
+                Ok(CallToolResult::success(vec![Annotated::new(
+                    RawContent::text(response.to_string()),
+                    None,
+                )]))
+            }
+            Err(e) => {
+                error!("Failed to recall memories by scope: {:?}", e);
+                Ok(CallToolResult::error(vec![Annotated::new(
+                    RawContent::text(format!("Failed to recall memories by scope: {}", e)),
+                    None,
+                )]))
+            }
+        }
+    }
 }
 
 impl ServerHandler for CerebrumHandler {
@@ -351,6 +455,7 @@ impl ServerHandler for CerebrumHandler {
                     Self::memorize_tool(),
                     Self::forget_tool(),
                     Self::end_session_tool(),
+                    Self::recall_by_scope_tool(),
                 ],
                 ..Default::default()
             })
@@ -386,6 +491,10 @@ impl ServerHandler for CerebrumHandler {
                     self.handle_end_session(request.arguments.map(Value::Object))
                         .await
                 }
+                "recall_by_scope" => {
+                    self.handle_recall_by_scope(request.arguments.map(Value::Object))
+                        .await
+                }
                 _ => Err("Unknown tool".to_string()),
             };
 
@@ -400,6 +509,7 @@ impl ServerHandler for CerebrumHandler {
             "memorize" => Some(Self::memorize_tool()),
             "forget" => Some(Self::forget_tool()),
             "end_session" => Some(Self::end_session_tool()),
+            "recall_by_scope" => Some(Self::recall_by_scope_tool()),
             _ => None,
         }
     }
@@ -651,5 +761,90 @@ mod tests {
         let info = handler.get_info();
         // Verify get_info returns a valid ServerInfo
         assert!(!info.server_info.name.is_empty());
+    }
+
+    #[test]
+    fn test_recall_by_scope_tool_definition() {
+        let tool = CerebrumHandler::recall_by_scope_tool();
+        assert_eq!(tool.name, "recall_by_scope");
+    }
+
+    #[tokio::test]
+    async fn test_handle_recall_by_scope_missing_query() {
+        let embedder: Arc<dyn cerebrum_core::Embedder> =
+            Arc::new(cerebrum_core::embedder::MockEmbedder::new());
+        let orchestrator = Arc::new(
+            MemoryOrchestrator::new("/tmp/test_recall_by_scope_missing", embedder)
+                .await
+                .expect("Failed to create orchestrator"),
+        );
+        let handler = CerebrumHandler::new(orchestrator);
+
+        let result = handler
+            .handle_recall_by_scope(Some(json!({
+                "scope": "global"
+            })))
+            .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_handle_recall_by_scope_invalid_scope() {
+        let embedder: Arc<dyn cerebrum_core::Embedder> =
+            Arc::new(cerebrum_core::embedder::MockEmbedder::new());
+        let orchestrator = Arc::new(
+            MemoryOrchestrator::new("/tmp/test_recall_by_scope_invalid", embedder)
+                .await
+                .expect("Failed to create orchestrator"),
+        );
+        let handler = CerebrumHandler::new(orchestrator);
+
+        let result = handler
+            .handle_recall_by_scope(Some(json!({
+                "query": "test",
+                "scope": "invalid_scope"
+            })))
+            .await;
+        assert!(result.is_ok()); // Should return error in response, not Err
+    }
+
+    #[tokio::test]
+    async fn test_handle_recall_by_scope_global() {
+        let embedder: Arc<dyn cerebrum_core::Embedder> =
+            Arc::new(cerebrum_core::embedder::MockEmbedder::new());
+        let orchestrator = Arc::new(
+            MemoryOrchestrator::new("/tmp/test_recall_by_scope_global", embedder)
+                .await
+                .expect("Failed to create orchestrator"),
+        );
+
+        orchestrator
+            .remember("Test memory".to_string(), HashMap::new())
+            .await
+            .expect("Failed to remember");
+
+        let handler = CerebrumHandler::new(orchestrator);
+        let result = handler
+            .handle_recall_by_scope(Some(json!({
+                "query": "test",
+                "scope": "global",
+                "limit": 10
+            })))
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_get_tool_recall_by_scope() {
+        let embedder: Arc<dyn cerebrum_core::Embedder> =
+            Arc::new(cerebrum_core::embedder::MockEmbedder::new());
+        let orchestrator = Arc::new(
+            MemoryOrchestrator::new("/tmp/test_get_tool_recall_by_scope", embedder)
+                .await
+                .expect("Failed to create orchestrator"),
+        );
+        let handler = CerebrumHandler::new(orchestrator);
+
+        assert!(handler.get_tool("recall_by_scope").is_some());
     }
 }

@@ -1,7 +1,7 @@
 use crate::cortex::CortexMemory;
 use crate::embedder::Embedder;
 use crate::error::Result;
-use crate::models::{MemoryEntry, MemoryId, MemoryTier};
+use crate::models::{MemoryEntry, MemoryId, MemoryScope, MemoryTier};
 use crate::synapse::SynapseMemory;
 use crate::traits::MemoryStore;
 use std::collections::HashMap;
@@ -102,7 +102,50 @@ impl MemoryOrchestrator {
         Ok(all_results.into_iter().take(limit).collect())
     }
 
-    /// Promote a memory from Synapse to Cortex.
+    /// Recall memories matching a query and scope from both tiers (Phase 5).
+    ///
+    /// Performs blended search across Synapse and Cortex, filtering by scope,
+    /// and merging and ranking results by relevance and salience.
+    ///
+    /// # Arguments
+    /// * `query` - The search query
+    /// * `scope` - Memory scope filter
+    /// * `limit` - Maximum number of results to return
+    ///
+    /// # Returns
+    /// Ranked list of matching memories within the specified scope
+    pub async fn recall_by_scope(
+        &self,
+        query: String,
+        scope: MemoryScope,
+        limit: usize,
+    ) -> Result<Vec<MemoryEntry>> {
+        // Search both tiers in parallel with scope filtering
+        let synapse_results = self
+            .synapse
+            .retrieve_by_scope(&query, &scope, limit)
+            .await?;
+        let cortex_results = self.cortex.retrieve_by_scope(&query, &scope, limit).await?;
+
+        // Merge results
+        let mut all_results = Vec::new();
+        all_results.extend(synapse_results);
+        all_results.extend(cortex_results);
+
+        // Remove duplicates (keep first occurrence)
+        let mut seen = std::collections::HashSet::new();
+        all_results.retain(|entry| seen.insert(entry.id));
+
+        // Sort by salience (descending)
+        all_results.sort_by(|a, b| {
+            b.salience
+                .partial_cmp(&a.salience)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        // Return top N
+        Ok(all_results.into_iter().take(limit).collect())
+    }
     ///
     /// Moves a memory from short-term to long-term storage.
     ///
