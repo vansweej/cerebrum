@@ -232,6 +232,7 @@ mod tests {
             tier: MemoryTier::Cortex,
             embedding: None,
             source_session_id: None,
+            scope: crate::models::MemoryScope::Global,
         }
     }
 
@@ -325,7 +326,10 @@ mod tests {
         let context = create_test_context();
 
         let score = hybrid.score(&entry, &context);
-        assert!(score >= 0.0 && score <= 1.0, "Hybrid should work with single strategy");
+        assert!(
+            score >= 0.0 && score <= 1.0,
+            "Hybrid should work with single strategy"
+        );
     }
 
     #[test]
@@ -341,7 +345,10 @@ mod tests {
         let context = create_test_context();
 
         let score = hybrid.score(&entry, &context);
-        assert!(score >= 0.0 && score <= 1.0, "Hybrid should combine multiple strategies");
+        assert!(
+            score >= 0.0 && score <= 1.0,
+            "Hybrid should combine multiple strategies"
+        );
     }
 
     #[test]

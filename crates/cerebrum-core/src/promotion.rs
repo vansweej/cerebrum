@@ -220,6 +220,7 @@ mod tests {
             tier: MemoryTier::Synapse,
             embedding: None,
             source_session_id: None,
+            scope: crate::models::MemoryScope::Global,
         }
     }
 

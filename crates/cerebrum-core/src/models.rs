@@ -41,6 +41,57 @@ pub enum MemoryTier {
     Cortex,
 }
 
+/// Designates the scope or visibility of a memory entry.
+///
+/// Scopes determine who can access and retrieve a memory:
+/// - Global: Accessible to all agents and users
+/// - User: Accessible only to a specific user
+/// - Agent: Accessible only to a specific agent
+/// - Session: Accessible only within a specific session
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum MemoryScope {
+    /// Global scope: accessible to all agents and users.
+    Global,
+    /// User scope: accessible only to a specific user.
+    User(String),
+    /// Agent scope: accessible only to a specific agent.
+    Agent(String),
+    /// Session scope: accessible only within a specific session.
+    Session(String),
+}
+
+impl MemoryScope {
+    /// Check if this scope matches another scope.
+    ///
+    /// Global scope matches all scopes.
+    /// Other scopes match only if they are identical.
+    pub fn matches(&self, other: &MemoryScope) -> bool {
+        match (self, other) {
+            (MemoryScope::Global, _) | (_, MemoryScope::Global) => true,
+            (MemoryScope::User(a), MemoryScope::User(b)) => a == b,
+            (MemoryScope::Agent(a), MemoryScope::Agent(b)) => a == b,
+            (MemoryScope::Session(a), MemoryScope::Session(b)) => a == b,
+            _ => false,
+        }
+    }
+
+    /// Get a string representation of the scope.
+    pub fn as_str(&self) -> String {
+        match self {
+            MemoryScope::Global => "global".to_string(),
+            MemoryScope::User(id) => format!("user:{}", id),
+            MemoryScope::Agent(id) => format!("agent:{}", id),
+            MemoryScope::Session(id) => format!("session:{}", id),
+        }
+    }
+}
+
+impl fmt::Display for MemoryScope {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 /// A single memory entry with content, metadata, and embedding.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryEntry {
@@ -60,6 +111,8 @@ pub struct MemoryEntry {
     pub embedding: Option<Vec<f32>>,
     /// Session ID where this memory originated (if applicable).
     pub source_session_id: Option<String>,
+    /// Scope or visibility of this memory.
+    pub scope: MemoryScope,
 }
 
 impl MemoryEntry {
@@ -74,6 +127,7 @@ impl MemoryEntry {
             tier: MemoryTier::Synapse,
             embedding: None,
             source_session_id: None,
+            scope: MemoryScope::Global,
         }
     }
 
@@ -88,6 +142,7 @@ impl MemoryEntry {
             tier: MemoryTier::Synapse,
             embedding: None,
             source_session_id: None,
+            scope: MemoryScope::Global,
         }
     }
 }
@@ -102,6 +157,7 @@ pub struct MemoryEntryBuilder {
     tier: MemoryTier,
     embedding: Option<Vec<f32>>,
     source_session_id: Option<String>,
+    scope: MemoryScope,
 }
 
 impl MemoryEntryBuilder {
@@ -129,6 +185,12 @@ impl MemoryEntryBuilder {
         self
     }
 
+    /// Set the memory scope.
+    pub fn scope(mut self, scope: MemoryScope) -> Self {
+        self.scope = scope;
+        self
+    }
+
     /// Add a metadata key-value pair.
     pub fn metadata(mut self, key: String, value: String) -> Self {
         self.metadata.insert(key, value);
@@ -152,6 +214,7 @@ impl MemoryEntryBuilder {
             tier: self.tier,
             embedding: self.embedding,
             source_session_id: self.source_session_id,
+            scope: self.scope,
         }
     }
 }

@@ -103,16 +103,16 @@ impl KeywordSummarizer {
     fn extract_keywords(&self, text: &str) -> Vec<String> {
         let stop_words = [
             "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with",
-            "by", "from", "is", "are", "was", "were", "be", "been", "being", "have", "has",
-            "had", "do", "does", "did", "will", "would", "could", "should", "may", "might",
-            "must", "can", "this", "that", "these", "those", "i", "you", "he", "she", "it",
-            "we", "they", "what", "which", "who", "when", "where", "why", "how",
+            "by", "from", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
+            "do", "does", "did", "will", "would", "could", "should", "may", "might", "must", "can",
+            "this", "that", "these", "those", "i", "you", "he", "she", "it", "we", "they", "what",
+            "which", "who", "when", "where", "why", "how",
         ];
 
         let mut keywords: Vec<String> = text
             .to_lowercase()
             .split(|c: char| !c.is_alphanumeric())
-            .filter(|word| word.len() > 4 && !stop_words.contains(&word))
+            .filter(|word| word.len() > 4 && !stop_words.contains(word))
             .map(|s| s.to_string())
             .collect();
 
@@ -170,7 +170,7 @@ impl Summarizer for SentenceBasedSummarizer {
         // Split by sentence delimiters
         let sentences: Vec<&str> = entry
             .content
-            .split(|c| c == '.' || c == '!' || c == '?')
+            .split(['.', '!', '?'])
             .filter(|s| !s.trim().is_empty())
             .take(self.max_sentences)
             .collect();
@@ -205,6 +205,7 @@ mod tests {
             tier: MemoryTier::Synapse,
             embedding: None,
             source_session_id: None,
+            scope: crate::models::MemoryScope::Global,
         }
     }
 
@@ -297,7 +298,9 @@ mod tests {
     fn test_summarizer_preserves_metadata() {
         let summarizer = LengthBasedSummarizer::new(10);
         let mut entry = create_test_entry("This is a very long memory");
-        entry.metadata.insert("key".to_string(), "value".to_string());
+        entry
+            .metadata
+            .insert("key".to_string(), "value".to_string());
 
         let summarized = summarizer.summarize(&entry);
         assert_eq!(summarized.metadata.get("key"), Some(&"value".to_string()));
