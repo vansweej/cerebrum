@@ -28,4 +28,11 @@ pub trait MemoryStore: Send + Sync {
 
     /// Delete a memory by ID.
     async fn delete(&self, id: &MemoryId) -> Result<()>;
+
+    /// List all memories in the store.
+    async fn list(&self) -> Result<Vec<MemoryEntry>> {
+        // Default implementation: retrieve with a wildcard query and max limit
+        // Use a non-empty query to avoid embedder validation errors
+        self.retrieve("*", usize::MAX).await
+    }
 }
