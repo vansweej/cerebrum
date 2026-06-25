@@ -5,6 +5,7 @@ pub mod error;
 pub mod models;
 pub mod orchestrator;
 pub mod promotion;
+pub mod summarization;
 pub mod synapse;
 pub mod traits;
 pub mod utils;
@@ -19,6 +20,10 @@ pub use orchestrator::MemoryOrchestrator;
 pub use promotion::{
     FrequencyBasedPromotion, HybridPromotion, ImportanceBasedPromotion, PromotionContext,
     PromotionStrategy, RecencyBasedPromotion,
+};
+pub use summarization::{
+    IdentitySummarizer, KeywordSummarizer, LengthBasedSummarizer, SentenceBasedSummarizer,
+    Summarizer,
 };
 pub use synapse::SynapseMemory;
 pub use traits::MemoryStore;
