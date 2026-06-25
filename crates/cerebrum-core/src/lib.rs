@@ -3,6 +3,7 @@ pub mod error;
 pub mod models;
 pub mod synapse;
 pub mod cortex;
+pub mod orchestrator;
 pub mod traits;
 pub mod utils;
 
@@ -12,4 +13,5 @@ pub use error::{CerebrumError, Result};
 pub use models::{MemoryEntry, MemoryId, MemoryTier};
 pub use synapse::SynapseMemory;
 pub use cortex::CortexMemory;
+pub use orchestrator::MemoryOrchestrator;
 pub use traits::MemoryStore;
