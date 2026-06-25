@@ -218,6 +218,73 @@ git push origin phase-X-description
 
 ---
 
+### Phase 5: Advanced Features (Promotion, Decay, Summarization, Scope) ✅ COMPLETE
+**Commits:** 5 commits (d802b2b → 135f027)
+
+**Completed Deliverables:**
+- **Promotion Engine** ✅
+  - 4 strategies: Frequency, Recency, Importance, Hybrid
+  - 10 unit tests passing
+  - Commit: `d802b2b`
+- **Decay Engine** ✅
+  - 4 strategies: TimeBased, AccessBased, RelevanceBased, Hybrid
+  - 10 unit tests passing
+  - Commit: `623636b`
+- **Summarization Engine** ✅
+  - 4 strategies: Identity, LengthBased, KeywordBased, SentenceBased
+  - 10 unit tests passing
+  - Commit: `e867b9b`
+- **Identity & Scope Model** ✅
+  - MemoryScope enum with 4 variants (Global, User, Agent, Session)
+  - Added scope field to MemoryEntry
+  - Scope matching logic implemented
+  - Commit: `f215a91`
+- **Scope Filtering Methods** ✅
+  - retrieve_by_scope() method added to MemoryStore trait
+  - Implemented in both SynapseMemory and CortexMemory
+  - 10 unit tests for scope filtering
+  - Commit: `99cccd0`
+- **Integration Tests** ✅
+  - 17 comprehensive integration tests
+  - All Phase 5 features tested in combination
+  - Commit: `ac32194`
+- **MCP Server Update** ✅
+  - New recall_by_scope MCP tool
+  - 5 unit tests for new tool
+  - Commit: `135f027`
+- **Documentation** ✅
+  - Phase 5 section added to architecture.md
+  - Updated test coverage metrics
+  - Updated quality metrics
+
+**Key Files:**
+- `crates/cerebrum-core/src/promotion.rs` — Promotion strategies
+- `crates/cerebrum-core/src/decay.rs` — Decay strategies
+- `crates/cerebrum-core/src/summarization.rs` — Summarization strategies
+- `crates/cerebrum-core/src/models.rs` — MemoryScope enum and scope field
+- `crates/cerebrum-core/src/traits.rs` — retrieve_by_scope() method
+- `crates/cerebrum-core/src/synapse.rs` — Scope filtering implementation
+- `crates/cerebrum-core/src/cortex.rs` — Scope filtering implementation
+- `crates/cerebrum-core/src/orchestrator.rs` — recall_by_scope() method
+- `crates/cerebrum-core/tests/phase5_integration_tests.rs` — 17 integration tests
+- `crates/cerebrum/src/mcp_server.rs` — recall_by_scope MCP tool
+- `docs/architecture.md` — Phase 5 section
+
+**Test Results:**
+```
+Unit Tests: 72 passed (cerebrum-core library)
+MCP Server Tests: 21 passed (up from 16)
+Phase 2 Integration Tests: 20 passed
+Phase 3 Tier Integration Tests: 22 passed
+Phase 4 MCP Integration Tests: 36 passed
+Phase 5 Integration Tests: 17 passed
+Total Tests: 188 passed (100% success rate)
+Code Coverage: 100% of Phase 5 code
+Quality Gates: ✅ fmt, ✅ clippy, ✅ tarpaulin
+```
+
+---
+
 ## Repository Structure
 
 ```
