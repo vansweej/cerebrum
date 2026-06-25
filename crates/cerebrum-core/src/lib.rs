@@ -9,6 +9,7 @@ pub mod models;
 pub mod observability;
 pub mod orchestrator;
 pub mod promotion;
+pub mod resilience;
 pub mod summarization;
 pub mod synapse;
 pub mod traits;
@@ -34,6 +35,7 @@ pub use promotion::{
     FrequencyBasedPromotion, HybridPromotion, ImportanceBasedPromotion, PromotionContext,
     PromotionStrategy, RecencyBasedPromotion,
 };
+pub use resilience::{CircuitBreaker, CircuitBreakerConfig, CircuitState, RetryConfig};
 pub use summarization::{
     IdentitySummarizer, KeywordSummarizer, LengthBasedSummarizer, SentenceBasedSummarizer,
     Summarizer,

@@ -27,4 +27,7 @@ pub enum CerebrumError {
 
     #[error("Validation error: {0}")]
     Validation(String),
+
+    #[error("Service unavailable: {0}")]
+    Unavailable(String),
 }

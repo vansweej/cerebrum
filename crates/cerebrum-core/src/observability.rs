@@ -346,7 +346,7 @@ mod tests {
         ctx.remember_metrics.record_success(100);
         ctx.recall_metrics.record_failure(50);
         ctx.memorize_metrics.record_success(75);
-        
+
         // This should not panic
         ctx.log_summary();
     }
@@ -355,7 +355,7 @@ mod tests {
     fn test_operation_metrics_clone() {
         let metrics = OperationMetrics::new();
         metrics.record_success(100);
-        
+
         let cloned = metrics.clone();
         assert_eq!(cloned.total_operations(), 1);
         assert_eq!(cloned.successful_operations(), 1);
@@ -366,7 +366,7 @@ mod tests {
     fn test_observability_context_clone() {
         let ctx = ObservabilityContext::new();
         ctx.remember_metrics.record_success(100);
-        
+
         let cloned = ctx.clone();
         assert_eq!(cloned.remember_metrics.total_operations(), 1);
     }
