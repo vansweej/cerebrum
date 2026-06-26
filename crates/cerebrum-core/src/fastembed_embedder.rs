@@ -192,6 +192,10 @@ impl Embedder for FastEmbedEmbedder {
 
         Ok(embed_response.embedding)
     }
+
+    fn dimension(&self) -> usize {
+        384
+    }
 }
 
 #[cfg(test)]
