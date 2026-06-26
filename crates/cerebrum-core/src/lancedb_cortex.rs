@@ -740,8 +740,8 @@ mod tests {
             .await
             .unwrap();
         // All read operations on a fresh store must succeed with empty results.
-        assert_eq!(cortex.retrieve("anything", 10).await.unwrap(), vec![]);
-        assert_eq!(cortex.list().await.unwrap(), vec![]);
+        assert!(cortex.retrieve("anything", 10).await.unwrap().is_empty());
+        assert!(cortex.list().await.unwrap().is_empty());
         assert_eq!(cortex.len().await.unwrap(), 0);
         assert!(cortex.is_empty().await.unwrap());
     }

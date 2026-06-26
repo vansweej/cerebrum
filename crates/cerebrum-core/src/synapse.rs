@@ -536,7 +536,7 @@ mod tests {
         let embedding_memory = generate_embedding("memory").await;
 
         // Store 5 memories with same text (same embedding)
-        for i in 0..5 {
+        for _i in 0..5 {
             let id = MemoryId::new();
             let entry = MemoryEntry::builder(id, "memory".to_string())
                 .embedding(embedding_memory.clone())
