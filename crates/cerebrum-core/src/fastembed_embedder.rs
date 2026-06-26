@@ -1,8 +1,12 @@
 use crate::error::{CerebrumError, Result};
+use crate::observability::OperationMetrics;
+use crate::resilience::{CircuitBreaker, CircuitBreakerConfig};
 use crate::traits::Embedder;
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::time::Instant;
 
 /// Request body for Ollama embedding API
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,11 +34,19 @@ static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
 /// Provides real semantic embeddings for accurate similarity search.
 /// Uses the nomic-embed-text model which is optimized for performance and quality.
 /// Requires Ollama to be running at http://localhost:11434
+///
+/// Includes observability metrics and resilience patterns:
+/// - Tracks latency, success rate, and error counts
+/// - Circuit breaker for handling Ollama endpoint failures
 pub struct FastEmbedEmbedder {
     /// Ollama endpoint URL
     endpoint: String,
     /// Model name (default: nomic-embed-text)
     model: String,
+    /// Metrics for tracking operation performance
+    metrics: Arc<OperationMetrics>,
+    /// Circuit breaker for handling transient failures
+    circuit_breaker: Arc<CircuitBreaker>,
 }
 
 impl FastEmbedEmbedder {
@@ -47,6 +59,8 @@ impl FastEmbedEmbedder {
         Self {
             endpoint: "http://localhost:11434".to_string(),
             model: "nomic-embed-text".to_string(),
+            metrics: Arc::new(OperationMetrics::new()),
+            circuit_breaker: Arc::new(CircuitBreaker::new(CircuitBreakerConfig::new())),
         }
     }
 
@@ -55,17 +69,34 @@ impl FastEmbedEmbedder {
         Self {
             endpoint,
             model: "nomic-embed-text".to_string(),
+            metrics: Arc::new(OperationMetrics::new()),
+            circuit_breaker: Arc::new(CircuitBreaker::new(CircuitBreakerConfig::new())),
         }
     }
 
     /// Create a new FastEmbed embedder with custom endpoint and model.
     pub fn with_config(endpoint: String, model: String) -> Self {
-        Self { endpoint, model }
+        Self {
+            endpoint,
+            model,
+            metrics: Arc::new(OperationMetrics::new()),
+            circuit_breaker: Arc::new(CircuitBreaker::new(CircuitBreakerConfig::new())),
+        }
     }
 
     /// Get the embedding dimension for this model.
     pub fn embedding_dim(&self) -> usize {
         384 // nomic-embed-text produces 384-dimensional embeddings
+    }
+
+    /// Get the metrics for this embedder.
+    pub fn metrics(&self) -> Arc<OperationMetrics> {
+        self.metrics.clone()
+    }
+
+    /// Get the circuit breaker for this embedder.
+    pub fn circuit_breaker(&self) -> Arc<CircuitBreaker> {
+        self.circuit_breaker.clone()
     }
 
     /// Check if Ollama is available at the configured endpoint.
@@ -92,6 +123,11 @@ impl Default for FastEmbedEmbedder {
 #[async_trait]
 impl Embedder for FastEmbedEmbedder {
     async fn embed(&self, text: &str) -> Result<Vec<f32>> {
+        let start_time = Instant::now();
+
+        // Check circuit breaker before making request
+        self.circuit_breaker.allow_request()?;
+
         let url = format!("{}/api/embed", self.endpoint);
 
         let request = OllamaEmbedRequest {
@@ -99,7 +135,7 @@ impl Embedder for FastEmbedEmbedder {
             prompt: text.to_string(),
         };
 
-        let response = HTTP_CLIENT
+        let result = HTTP_CLIENT
             .post(&url)
             .json(&request)
             .send()
@@ -109,27 +145,50 @@ impl Embedder for FastEmbedEmbedder {
                     "Failed to connect to Ollama at {}: {}",
                     self.endpoint, e
                 ))
-            })?;
+            })
+            .and_then(|response| {
+                if !response.status().is_success() {
+                    return Err(CerebrumError::Embedding(format!(
+                        "Ollama API error: {}",
+                        response.status()
+                    )));
+                }
+                Ok(response)
+            });
 
-        if !response.status().is_success() {
-            return Err(CerebrumError::Embedding(format!(
-                "Ollama API error: {} - {}",
-                response.status(),
-                response.text().await.unwrap_or_default()
-            )));
-        }
+        let response = match result {
+            Ok(resp) => resp,
+            Err(e) => {
+                // Record failure and update circuit breaker
+                let duration_ms = start_time.elapsed().as_millis() as u64;
+                self.metrics.record_failure(duration_ms);
+                self.circuit_breaker.record_failure();
+                return Err(e);
+            }
+        };
 
         let embed_response: OllamaEmbedResponse = response.json().await.map_err(|e| {
+            let duration_ms = start_time.elapsed().as_millis() as u64;
+            self.metrics.record_failure(duration_ms);
+            self.circuit_breaker.record_failure();
             CerebrumError::Embedding(format!("Failed to parse Ollama response: {}", e))
         })?;
 
         // Verify dimensions
         if embed_response.embedding.len() != 384 {
+            let duration_ms = start_time.elapsed().as_millis() as u64;
+            self.metrics.record_failure(duration_ms);
+            self.circuit_breaker.record_failure();
             return Err(CerebrumError::Validation(format!(
                 "Invalid embedding dimension from Ollama: expected 384, got {}",
                 embed_response.embedding.len()
             )));
         }
+
+        // Record success
+        let duration_ms = start_time.elapsed().as_millis() as u64;
+        self.metrics.record_success(duration_ms);
+        self.circuit_breaker.record_success();
 
         Ok(embed_response.embedding)
     }
@@ -298,5 +357,97 @@ mod tests {
         // Embedding should be normalized (magnitude close to 1)
         let magnitude: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
         assert!((magnitude - 1.0).abs() < 0.01);
+    }
+
+    // ============================================================================
+    // Phase 3: Observability & Resilience Tests
+    // ============================================================================
+
+    #[tokio::test]
+    async fn test_fastembed_embedder_metrics_initialization() {
+        let embedder = FastEmbedEmbedder::new();
+        let metrics = embedder.metrics();
+
+        // Verify metrics are initialized to zero
+        assert_eq!(metrics.total_operations(), 0);
+        assert_eq!(metrics.successful_operations(), 0);
+        assert_eq!(metrics.failed_operations(), 0);
+        assert_eq!(metrics.total_time_ms(), 0);
+        assert_eq!(metrics.success_rate(), 100.0); // 0/0 = 100%
+    }
+
+    #[tokio::test]
+    async fn test_fastembed_embedder_circuit_breaker_initialization() {
+        let embedder = FastEmbedEmbedder::new();
+        let cb = embedder.circuit_breaker();
+
+        // Verify circuit breaker starts in Closed state
+        use crate::resilience::CircuitState;
+        assert_eq!(cb.state(), CircuitState::Closed);
+    }
+
+    #[tokio::test]
+    async fn test_fastembed_embedder_circuit_breaker_allow_request_when_closed() {
+        let embedder = FastEmbedEmbedder::new();
+        let cb = embedder.circuit_breaker();
+
+        // Circuit breaker should allow requests when Closed
+        assert!(cb.allow_request().is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_fastembed_embedder_circuit_breaker_records_success() {
+        let embedder = FastEmbedEmbedder::new();
+        let cb = embedder.circuit_breaker();
+
+        // Record a success
+        cb.record_success();
+
+        // Circuit breaker should still be Closed
+        use crate::resilience::CircuitState;
+        assert_eq!(cb.state(), CircuitState::Closed);
+    }
+
+    #[tokio::test]
+    async fn test_fastembed_embedder_circuit_breaker_opens_on_failures() {
+        let embedder = FastEmbedEmbedder::new();
+        let cb = embedder.circuit_breaker();
+
+        // Record multiple failures to trigger Open state
+        for _ in 0..5 {
+            cb.record_failure();
+        }
+
+        // Circuit breaker should be Open
+        use crate::resilience::CircuitState;
+        assert_eq!(cb.state(), CircuitState::Open);
+
+        // Circuit breaker should deny requests when Open
+        assert!(cb.allow_request().is_err());
+    }
+
+    #[tokio::test]
+    async fn test_fastembed_embedder_metrics_track_operations() {
+        let embedder = FastEmbedEmbedder::new();
+        let metrics = embedder.metrics();
+
+        // Record some operations
+        metrics.record_success(100);
+        metrics.record_success(200);
+        metrics.record_failure(150);
+
+        // Verify metrics are updated
+        assert_eq!(metrics.total_operations(), 3);
+        assert_eq!(metrics.successful_operations(), 2);
+        assert_eq!(metrics.failed_operations(), 1);
+        assert_eq!(metrics.total_time_ms(), 450);
+
+        // Verify success rate
+        let success_rate = metrics.success_rate();
+        assert!((success_rate - 66.66).abs() < 0.1); // 2/3 ≈ 66.66%
+
+        // Verify average time
+        let avg_time = metrics.average_time_ms();
+        assert!((avg_time - 150.0).abs() < 0.1); // 450/3 = 150
     }
 }
