@@ -173,7 +173,10 @@ mod tests {
     /// Helper function to generate embeddings from text using MockEmbedder
     async fn generate_embedding(text: &str) -> Vec<f32> {
         let embedder = MockEmbedder::new();
-        embedder.embed(text).await.unwrap_or_else(|_| vec![0.0; 384])
+        embedder
+            .embed(text)
+            .await
+            .unwrap_or_else(|_| vec![0.0; 384])
     }
 
     #[tokio::test]

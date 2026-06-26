@@ -1,6 +1,6 @@
 use cerebrum_core::{
-    LanceDBCortex, MemoryEntry, MemoryId, MemoryOrchestrator, MemoryStore, MemoryTier, MockEmbedder,
-    SynapseMemory,
+    LanceDBCortex, MemoryEntry, MemoryId, MemoryOrchestrator, MemoryStore, MemoryTier,
+    MockEmbedder, SynapseMemory,
 };
 use std::collections::HashMap;
 use std::sync::Arc;

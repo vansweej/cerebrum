@@ -6,12 +6,12 @@
 use cerebrum_core::embedder::{Embedder, MockEmbedder};
 use cerebrum_core::models::{MemoryEntry, MemoryId, MemoryScope};
 use cerebrum_core::observability::OperationMetrics;
+use cerebrum_core::orchestrator::MemoryOrchestrator;
 use cerebrum_core::resilience::{CircuitBreaker, CircuitBreakerConfig};
 use cerebrum_core::synapse::SynapseMemory;
 use cerebrum_core::traits::MemoryStore;
-use cerebrum_core::orchestrator::MemoryOrchestrator;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use tokio::task::JoinHandle;
 
 // ============================================================================
@@ -333,10 +333,11 @@ async fn test_concurrent_synapse_stores() {
                     .embed(&format!("content from task {}", task_id))
                     .await
                     .unwrap();
-                let entry = MemoryEntry::builder(MemoryId::new(), format!("content from task {}", task_id))
-                    .salience(0.5)
-                    .embedding(embedding)
-                    .build();
+                let entry =
+                    MemoryEntry::builder(MemoryId::new(), format!("content from task {}", task_id))
+                        .salience(0.5)
+                        .embedding(embedding)
+                        .build();
                 synapse_clone.store(entry).await.unwrap();
             }
         });
@@ -524,7 +525,11 @@ async fn test_synapse_stress_many_clears() {
 async fn test_orchestrator_with_concurrent_mixed_operations() {
     let embedder = Arc::new(MockEmbedder::new());
     let synapse = Arc::new(SynapseMemory::new(embedder.clone()));
-    let orchestrator = Arc::new(MemoryOrchestrator::new(":memory:", embedder.clone()).await.unwrap());
+    let orchestrator = Arc::new(
+        MemoryOrchestrator::new(":memory:", embedder.clone())
+            .await
+            .unwrap(),
+    );
 
     let mut handles: Vec<JoinHandle<()>> = vec![];
 
@@ -533,7 +538,10 @@ async fn test_orchestrator_with_concurrent_mixed_operations() {
     let embedder_clone = embedder.clone();
     let handle1 = tokio::spawn(async move {
         for i in 0..20 {
-            let embedding = embedder_clone.embed(&format!("content {}", i)).await.unwrap();
+            let embedding = embedder_clone
+                .embed(&format!("content {}", i))
+                .await
+                .unwrap();
             let entry = MemoryEntry::builder(MemoryId::new(), format!("content {}", i))
                 .salience(0.5)
                 .embedding(embedding)
@@ -548,10 +556,7 @@ async fn test_orchestrator_with_concurrent_mixed_operations() {
     let handle2 = tokio::spawn(async move {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
         for _ in 0..10 {
-            let _ = orch2
-                .recall("content".to_string(), 5)
-                .await
-                .unwrap();
+            let _ = orch2.recall("content".to_string(), 5).await.unwrap();
         }
     });
     handles.push(handle2);
@@ -578,7 +583,11 @@ async fn test_orchestrator_with_concurrent_mixed_operations() {
 #[tokio::test]
 async fn test_concurrent_orchestrator_operations() {
     let embedder = Arc::new(MockEmbedder::new());
-    let orchestrator = Arc::new(MemoryOrchestrator::new(":memory:", embedder.clone()).await.unwrap());
+    let orchestrator = Arc::new(
+        MemoryOrchestrator::new(":memory:", embedder.clone())
+            .await
+            .unwrap(),
+    );
 
     let mut handles: Vec<JoinHandle<()>> = vec![];
 
@@ -591,10 +600,7 @@ async fn test_concurrent_orchestrator_operations() {
                 let content = format!("memory content from task {}", task_id);
 
                 // Recall
-                let results = orchestrator_clone
-                    .recall(content.clone(), 5)
-                    .await
-                    .unwrap();
+                let results = orchestrator_clone.recall(content.clone(), 5).await.unwrap();
 
                 // If we got results, try to forget the first one
                 if !results.is_empty() {

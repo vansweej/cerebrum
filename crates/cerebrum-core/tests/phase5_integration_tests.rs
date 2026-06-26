@@ -4,8 +4,8 @@ use cerebrum_core::{
     AccessBasedDecay, DecayContext, DecayStrategy, FrequencyBasedPromotion, HybridDecay,
     HybridPromotion, IdentitySummarizer, ImportanceBasedPromotion, KeywordSummarizer,
     LengthBasedSummarizer, MemoryEntry, MemoryId, MemoryScope, MemoryStore, MemoryTier,
-    MockEmbedder, PromotionContext, PromotionStrategy, RecencyBasedPromotion, SentenceBasedSummarizer,
-    Summarizer, SynapseMemory,
+    MockEmbedder, PromotionContext, PromotionStrategy, RecencyBasedPromotion,
+    SentenceBasedSummarizer, Summarizer, SynapseMemory,
 };
 use chrono::Utc;
 use std::collections::HashMap;

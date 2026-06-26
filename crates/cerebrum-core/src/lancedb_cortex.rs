@@ -101,10 +101,13 @@ fn parse_scope_string(scope_str: &str) -> Result<MemoryScope> {
 /// persistent storage across sessions. Supports salience-based ranking.
 pub struct LanceDBCortex {
     /// Database path for LanceDB
+    #[allow(dead_code)]
     db_path: String,
     /// Table name for storing memories
+    #[allow(dead_code)]
     table_name: String,
     /// Embedding dimension (384 for BGE-small)
+    #[allow(dead_code)]
     embedding_dim: usize,
     /// Embedder for generating embeddings
     embedder: Arc<dyn Embedder>,
@@ -154,10 +157,7 @@ impl LanceDBCortex {
     /// Search memories by salience (highest first).
     pub async fn search_by_salience(&self, limit: usize) -> Result<Vec<MemoryEntry>> {
         let records = self.records.read();
-        let mut entries: Vec<_> = records
-            .iter()
-            .filter_map(|r| r.to_entry().ok())
-            .collect();
+        let mut entries: Vec<_> = records.iter().filter_map(|r| r.to_entry().ok()).collect();
 
         // Sort by salience (descending)
         entries.sort_by(|a, b| {
@@ -182,10 +182,7 @@ impl LanceDBCortex {
     /// List all memories.
     pub async fn list(&self) -> Result<Vec<MemoryEntry>> {
         let records = self.records.read();
-        records
-            .iter()
-            .map(|r| r.to_entry())
-            .collect()
+        records.iter().map(|r| r.to_entry()).collect()
     }
 }
 

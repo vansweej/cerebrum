@@ -41,4 +41,10 @@ pub trait MemoryStore: Send + Sync {
         // Default implementation: count items in list
         Ok(self.list().await?.len())
     }
+
+    /// Check if the store is empty.
+    async fn is_empty(&self) -> Result<bool> {
+        // Default implementation: check if len is 0
+        Ok(self.len().await? == 0)
+    }
 }

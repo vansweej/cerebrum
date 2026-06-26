@@ -2,6 +2,110 @@
 
 This guide covers migrating between different backends and embedders in Cerebrum.
 
+## Embedder Migration: MockEmbedder to Ollama
+
+### Overview
+
+Cerebrum supports two embedders:
+- **MockEmbedder:** Hash-based, deterministic, suitable for development
+- **FastEmbedEmbedder:** Real Ollama integration, semantic embeddings, suitable for production
+
+### Prerequisites
+
+Before migrating to Ollama embeddings, ensure:
+1. Ollama is installed and running: `ollama serve`
+2. nomic-embed-text model is available: `ollama pull nomic-embed-text`
+3. Ollama is accessible at http://localhost:11434 (or configure custom endpoint)
+
+### Step 1: Update Your Code
+
+**Before (MockEmbedder):**
+```rust
+use cerebrum_core::embedder::MockEmbedder;
+use cerebrum_core::orchestrator::MemoryOrchestrator;
+use std::sync::Arc;
+
+let embedder = Arc::new(MockEmbedder::new());
+let orchestrator = MemoryOrchestrator::new(":memory:", embedder).await?;
+```
+
+**After (FastEmbedEmbedder):**
+```rust
+use cerebrum_core::fastembed_embedder::FastEmbedEmbedder;
+use cerebrum_core::orchestrator::MemoryOrchestrator;
+use std::sync::Arc;
+
+let embedder = Arc::new(FastEmbedEmbedder::new());
+
+// Verify Ollama is available
+if !embedder.is_available().await {
+    eprintln!("Ollama not available, falling back to MockEmbedder");
+    let embedder = Arc::new(MockEmbedder::new());
+}
+
+let orchestrator = MemoryOrchestrator::new(":memory:", embedder).await?;
+```
+
+### Step 2: Migrate Existing Embeddings
+
+Use the migration tooling to re-embed existing memories:
+
+```rust
+use cerebrum_core::migration::{MigrationConfig, MigrationManager, MigrationStrategy};
+use cerebrum_core::fastembed_embedder::FastEmbedEmbedder;
+use cerebrum_core::embedder::MockEmbedder;
+use std::sync::Arc;
+
+// Create old orchestrator with MockEmbedder
+let old_embedder = Arc::new(MockEmbedder::new());
+let old_orchestrator = MemoryOrchestrator::new(":memory:", old_embedder).await?;
+
+// Create new orchestrator with FastEmbedEmbedder
+let new_embedder = Arc::new(FastEmbedEmbedder::new());
+let new_orchestrator = MemoryOrchestrator::new(":memory:", new_embedder).await?;
+
+// Use Hybrid strategy: re-embed high-salience memories, preserve low-salience
+let config = MigrationConfig::new(MigrationStrategy::Hybrid, new_embedder.clone())
+    .with_batch_size(50)
+    .with_hybrid_threshold(0.7);  // Re-embed memories with salience >= 0.7
+
+let manager = MigrationManager::new();
+let result = manager.execute(&old_orchestrator.cortex(), &config).await?;
+
+println!("Migration success rate: {:.2}%", result.success_rate());
+println!("Memories migrated: {}", result.migrated_count());
+```
+
+### Step 3: Verify Migration
+
+```rust
+// Verify embeddings are now semantic
+let test_query = "important information";
+let results = new_orchestrator.recall(test_query.to_string(), 10).await?;
+
+println!("Found {} semantically similar memories", results.len());
+
+// Check metrics
+let metrics = new_embedder.metrics();
+println!("Embedding success rate: {:.1}%", metrics.success_rate());
+println!("Average embedding latency: {:.2}ms", metrics.average_time_ms());
+```
+
+### Step 4: Monitor Circuit Breaker
+
+```rust
+// Monitor circuit breaker during migration
+let cb = new_embedder.circuit_breaker();
+
+match cb.allow_request() {
+    Ok(()) => println!("Circuit breaker: CLOSED (healthy)"),
+    Err(_) => {
+        eprintln!("Circuit breaker: OPEN (Ollama may be unavailable)");
+        eprintln!("Check Ollama status: curl http://localhost:11434/api/tags");
+    }
+}
+```
+
 ## Backend Migration: In-Memory to LanceDB
 
 ### Overview
@@ -29,7 +133,7 @@ use cerebrum_core::embedder::MockEmbedder;
 use std::sync::Arc;
 
 let embedder = Arc::new(MockEmbedder::new());
-let orchestrator = MemoryOrchestrator::with_lancedb_cortex("/tmp/lancedb", embedder).await?;
+let orchestrator = MemoryOrchestrator::new("/tmp/lancedb", embedder).await?;
 ```
 
 ### Step 2: Migrate Existing Data
@@ -41,7 +145,7 @@ use cerebrum_core::migration::{MigrationConfig, MigrationManager, MigrationStrat
 
 // Create source and destination orchestrators
 let source = MemoryOrchestrator::new("/tmp/cortex_old", embedder.clone()).await?;
-let dest = MemoryOrchestrator::with_lancedb_cortex("/tmp/lancedb_new", embedder.clone()).await?;
+let dest = MemoryOrchestrator::new("/tmp/lancedb_new", embedder.clone()).await?;
 
 // Retrieve all memories from source
 let all_memories = source.cortex().list().await?;
