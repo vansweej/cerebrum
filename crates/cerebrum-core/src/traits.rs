@@ -35,4 +35,74 @@ pub trait MemoryStore: Send + Sync {
         // Use a non-empty query to avoid embedder validation errors
         self.retrieve("*", usize::MAX).await
     }
+
+    /// Get the number of memories in the store.
+    async fn len(&self) -> Result<usize> {
+        // Default implementation: count items in list
+        Ok(self.list().await?.len())
+    }
+
+    /// Check if the store is empty.
+    async fn is_empty(&self) -> Result<bool> {
+        // Default implementation: check if len is 0
+        Ok(self.len().await? == 0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Minimal in-test store that implements MemoryStore with only required methods.
+    /// Deliberately does NOT override list/len/is_empty to test default implementations.
+    struct DefaultStore;
+
+    #[async_trait]
+    impl MemoryStore for DefaultStore {
+        async fn store(&self, _entry: MemoryEntry) -> Result<()> {
+            Ok(())
+        }
+
+        async fn retrieve(&self, _query: &str, _limit: usize) -> Result<Vec<MemoryEntry>> {
+            // Return a fixed Vec of two entries regardless of input
+            Ok(vec![
+                MemoryEntry::new(MemoryId::new(), "content1".to_string()),
+                MemoryEntry::new(MemoryId::new(), "content2".to_string()),
+            ])
+        }
+
+        async fn retrieve_by_scope(
+            &self,
+            _query: &str,
+            _scope: &MemoryScope,
+            _limit: usize,
+        ) -> Result<Vec<MemoryEntry>> {
+            Ok(vec![])
+        }
+
+        async fn delete(&self, _id: &MemoryId) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_default_list_delegates_to_retrieve() {
+        let store = DefaultStore;
+        let result = store.list().await.unwrap();
+        assert_eq!(result.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_default_len_counts_list() {
+        let store = DefaultStore;
+        let len = store.len().await.unwrap();
+        assert_eq!(len, 2);
+    }
+
+    #[tokio::test]
+    async fn test_default_is_empty_false_when_populated() {
+        let store = DefaultStore;
+        let is_empty = store.is_empty().await.unwrap();
+        assert_eq!(is_empty, false);
+    }
 }

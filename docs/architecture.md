@@ -92,16 +92,46 @@ pub enum MemoryTier {
 
 ### Embedding Strategy
 
-**Current (Development):** `MockEmbedder`
+**Development:** `MockEmbedder`
 - Generates deterministic 384-dimensional embeddings based on text hashing
 - Suitable for development and testing
 - Normalized to unit length for consistent similarity calculations
 
-**Future (Production):** `FastembedEmbedder`
-- Uses the `fastembed` crate with BGE-small model
+**Production:** `FastEmbedEmbedder` (Real Ollama Integration)
+- Calls real Ollama HTTP API with nomic-embed-text model
 - Produces semantic embeddings (384-dimensional)
-- Requires TLS configuration for binary downloads
-- Provides higher-quality semantic similarity than hash-based embeddings
+- Requires Ollama server running at http://localhost:11434 (configurable)
+- Provides high-quality semantic similarity for accurate memory retrieval
+- Integrated with circuit breaker for failure protection
+- Tracks operation metrics (latency, success rate, error counts)
+
+### Ollama Integration Architecture
+
+```mermaid
+graph LR
+    Text["Text Content"] -->|FastEmbedEmbedder| CB["Circuit Breaker"]
+    CB -->|allow_request?| Metrics["Metrics"]
+    Metrics -->|HTTP POST| Ollama["Ollama Server"]
+    Ollama -->|/api/embed| Model["nomic-embed-text Model"]
+    Model -->|384-dim Vector| Vector["Embedding Vector"]
+    Vector -->|record_success| Metrics
+    Metrics -->|Return| Entry["MemoryEntry"]
+```
+
+### Circuit Breaker Pattern
+
+The circuit breaker protects against cascading failures when Ollama is unavailable:
+
+**States:**
+- **CLOSED:** Normal operation, requests allowed, failures counted
+- **OPEN:** After 5 consecutive failures, requests denied to prevent cascading failures
+- **HALF_OPEN:** After 60 seconds timeout, one request allowed to test recovery
+- **CLOSED:** If test succeeds, circuit closes and normal operation resumes
+
+**Configuration:**
+- Failure threshold: 5 consecutive failures
+- Timeout: 60 seconds before attempting recovery
+- Automatic state transitions based on success/failure
 
 ### Data Flow: Text → Embedding → Storage
 

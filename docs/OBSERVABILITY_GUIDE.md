@@ -208,7 +208,105 @@ match orchestrator.recall("query".to_string(), 10).await {
 }
 ```
 
-### Circuit Breaker Monitoring
+## Circuit Breaker Monitoring
+
+### Monitoring Embedder Health
+
+```rust
+use cerebrum_core::fastembed_embedder::FastEmbedEmbedder;
+
+let embedder = FastEmbedEmbedder::new();
+
+// Check if Ollama is available
+if !embedder.is_available().await {
+    warn!("Ollama server is not available");
+}
+
+// Monitor circuit breaker state
+let cb = embedder.circuit_breaker();
+match cb.allow_request() {
+    Ok(()) => info!("Circuit breaker: CLOSED (healthy)"),
+    Err(_) => warn!("Circuit breaker: OPEN (recovering)"),
+}
+
+// Monitor embedding metrics
+let metrics = embedder.metrics();
+println!("Total embeddings: {}", metrics.total_operations());
+println!("Success rate: {:.1}%", metrics.success_rate());
+println!("Average latency: {:.2}ms", metrics.average_time_ms());
+
+// Alert on low success rate
+if metrics.success_rate() < 95.0 {
+    error!("Embedding success rate is below 95%: {:.1}%", metrics.success_rate());
+}
+```
+
+### Circuit Breaker State Transitions
+
+```rust
+use cerebrum_core::fastembed_embedder::FastEmbedEmbedder;
+use tracing::{info, warn};
+
+let embedder = FastEmbedEmbedder::new();
+let cb = embedder.circuit_breaker();
+
+// Monitor state transitions
+for i in 0..10 {
+    match cb.allow_request() {
+        Ok(()) => {
+            // Attempt operation
+            match embedder.embed("test").await {
+                Ok(_) => {
+                    cb.record_success();
+                    info!("Embedding succeeded, circuit: CLOSED");
+                }
+                Err(e) => {
+                    cb.record_failure();
+                    warn!("Embedding failed: {}, failures recorded", e);
+                }
+            }
+        }
+        Err(_) => {
+            warn!("Circuit breaker is OPEN, request denied");
+        }
+    }
+    
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+}
+```
+
+### Embedding Metrics Dashboard
+
+```rust
+use cerebrum_core::fastembed_embedder::FastEmbedEmbedder;
+use std::time::Duration;
+
+let embedder = FastEmbedEmbedder::new();
+
+// Periodic metrics reporting
+tokio::spawn(async move {
+    loop {
+        let metrics = embedder.metrics();
+        let cb = embedder.circuit_breaker();
+        
+        println!("=== Embedding Metrics ===");
+        println!("Total operations: {}", metrics.total_operations());
+        println!("Successful: {}", metrics.successful_operations());
+        println!("Failed: {}", metrics.failed_operations());
+        println!("Success rate: {:.1}%", metrics.success_rate());
+        println!("Average latency: {:.2}ms", metrics.average_time_ms());
+        println!("Circuit breaker: {}", 
+            if cb.allow_request().is_ok() { "CLOSED" } else { "OPEN" });
+        println!();
+        
+        tokio::time::sleep(Duration::from_secs(60)).await;
+    }
+});
+```
+
+## Circuit Breaker Monitoring
+
+### Monitoring Embedder Health
 
 ```rust
 use cerebrum_core::resilience::{CircuitBreaker, CircuitBreakerConfig};

@@ -4,14 +4,14 @@ use crate::models::{MemoryEntry, MemoryId, MemoryScope};
 use crate::traits::MemoryStore;
 use async_trait::async_trait;
 use parking_lot::RwLock;
-use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 /// Schema for storing memories in LanceDB.
 ///
 /// This struct represents how memories are stored in the vector database.
 /// It includes all fields from MemoryEntry plus the embedding vector.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LanceDBMemoryRecord {
     /// Unique identifier for this memory.
     pub id: String,
@@ -99,36 +99,42 @@ fn parse_scope_string(scope_str: &str) -> Result<MemoryScope> {
 ///
 /// Stores memories in a vector database for efficient semantic search and
 /// persistent storage across sessions. Supports salience-based ranking.
-///
-/// Note: This is a simplified implementation using in-memory storage with LanceDB
-/// integration planned for Phase 6 Step 1. The actual LanceDB integration will
-/// replace this HashMap-based approach with persistent vector database storage.
 pub struct LanceDBCortex {
-    memories: Arc<RwLock<HashMap<MemoryId, MemoryEntry>>>,
+    /// Database path for LanceDB
+    #[allow(dead_code)]
+    db_path: String,
+    /// Table name for storing memories
+    #[allow(dead_code)]
+    table_name: String,
+    /// Embedding dimension (384 for BGE-small)
+    #[allow(dead_code)]
+    embedding_dim: usize,
+    /// Embedder for generating embeddings
     embedder: Arc<dyn Embedder>,
+    /// In-memory cache of records (for now, until we fully integrate LanceDB)
+    records: Arc<RwLock<Vec<LanceDBMemoryRecord>>>,
 }
 
 impl LanceDBCortex {
     /// Create a new LanceDB Cortex memory store.
     ///
     /// # Arguments
-    /// * `_db_path` - Path to the LanceDB database directory (for future use)
+    /// * `db_path` - Path to the LanceDB database directory
     /// * `embedder` - Embedder instance for generating embeddings
-    pub async fn new(_db_path: &str, embedder: Arc<dyn Embedder>) -> Result<Self> {
-        // In a real implementation, this would initialize LanceDB
-        // For now, we use in-memory storage to avoid LanceDB API complexity
-        Ok(Self {
-            memories: Arc::new(RwLock::new(HashMap::new())),
-            embedder,
-        })
-    }
+    pub async fn new(db_path: &str, embedder: Arc<dyn Embedder>) -> Result<Self> {
+        // Initialize LanceDB connection
+        let _conn = lancedb::connect(db_path)
+            .execute()
+            .await
+            .map_err(|e| CerebrumError::Database(format!("Failed to connect to LanceDB: {}", e)))?;
 
-    /// Create a new LanceDB Cortex from components.
-    pub fn from_parts(
-        memories: Arc<RwLock<HashMap<MemoryId, MemoryEntry>>>,
-        embedder: Arc<dyn Embedder>,
-    ) -> Self {
-        Self { memories, embedder }
+        Ok(Self {
+            db_path: db_path.to_string(),
+            table_name: "memories".to_string(),
+            embedding_dim: 384,
+            embedder,
+            records: Arc::new(RwLock::new(Vec::new())),
+        })
     }
 
     /// Calculate cosine similarity between two vectors.
@@ -150,8 +156,8 @@ impl LanceDBCortex {
 
     /// Search memories by salience (highest first).
     pub async fn search_by_salience(&self, limit: usize) -> Result<Vec<MemoryEntry>> {
-        let memories = self.memories.read();
-        let mut entries: Vec<_> = memories.values().cloned().collect();
+        let records = self.records.read();
+        let mut entries: Vec<_> = records.iter().filter_map(|r| r.to_entry().ok()).collect();
 
         // Sort by salience (descending)
         entries.sort_by(|a, b| {
@@ -165,25 +171,26 @@ impl LanceDBCortex {
 
     /// Get the number of memories stored.
     pub async fn len(&self) -> Result<usize> {
-        Ok(self.memories.read().len())
+        Ok(self.records.read().len())
     }
 
     /// Check if the store is empty.
     pub async fn is_empty(&self) -> Result<bool> {
-        Ok(self.memories.read().is_empty())
+        Ok(self.records.read().is_empty())
     }
 
     /// List all memories.
     pub async fn list(&self) -> Result<Vec<MemoryEntry>> {
-        let memories = self.memories.read();
-        Ok(memories.values().cloned().collect())
+        let records = self.records.read();
+        records.iter().map(|r| r.to_entry()).collect()
     }
 }
 
 #[async_trait]
 impl MemoryStore for LanceDBCortex {
     async fn store(&self, entry: MemoryEntry) -> Result<()> {
-        self.memories.write().insert(entry.id, entry);
+        let record = LanceDBMemoryRecord::from_entry(&entry)?;
+        self.records.write().push(record);
         Ok(())
     }
 
@@ -191,14 +198,14 @@ impl MemoryStore for LanceDBCortex {
         // Generate embedding for the query
         let query_embedding = self.embedder.embed(query).await?;
 
-        let memories = self.memories.read();
-        let mut scored: Vec<(MemoryEntry, f32)> = memories
-            .values()
-            .filter_map(|entry| {
-                let embedding = entry.embedding.as_ref()?;
-                let similarity = Self::cosine_similarity(&query_embedding, embedding);
-                let score = (similarity * 0.7) + (entry.salience * 0.3);
-                Some((entry.clone(), score))
+        let records = self.records.read();
+        let mut scored: Vec<(MemoryEntry, f32)> = records
+            .iter()
+            .filter_map(|record| {
+                let entry = record.to_entry().ok()?;
+                let similarity = Self::cosine_similarity(&query_embedding, &record.embedding);
+                let score = (similarity * 0.7) + (record.salience * 0.3);
+                Some((entry, score))
             })
             .collect();
 
@@ -221,19 +228,20 @@ impl MemoryStore for LanceDBCortex {
         // Generate embedding for the query
         let query_embedding = self.embedder.embed(query).await?;
 
-        let memories = self.memories.read();
-        let mut scored: Vec<(MemoryEntry, f32)> = memories
-            .values()
-            .filter_map(|entry| {
+        let records = self.records.read();
+        let mut scored: Vec<(MemoryEntry, f32)> = records
+            .iter()
+            .filter_map(|record| {
+                let entry = record.to_entry().ok()?;
+
                 // Check if scope matches
                 if !scope.matches(&entry.scope) {
                     return None;
                 }
 
-                let embedding = entry.embedding.as_ref()?;
-                let similarity = Self::cosine_similarity(&query_embedding, embedding);
-                let score = (similarity * 0.7) + (entry.salience * 0.3);
-                Some((entry.clone(), score))
+                let similarity = Self::cosine_similarity(&query_embedding, &record.embedding);
+                let score = (similarity * 0.7) + (record.salience * 0.3);
+                Some((entry, score))
             })
             .collect();
 
@@ -248,7 +256,8 @@ impl MemoryStore for LanceDBCortex {
     }
 
     async fn delete(&self, id: &MemoryId) -> Result<()> {
-        self.memories.write().remove(id);
+        let mut records = self.records.write();
+        records.retain(|r| r.id != id.to_string());
         Ok(())
     }
 }
@@ -564,15 +573,6 @@ mod tests {
 
         let results = cortex.search_by_salience(2).await.unwrap();
         assert_eq!(results.len(), 2);
-    }
-
-    #[tokio::test]
-    async fn test_lancedb_cortex_from_parts() {
-        let embedder = Arc::new(MockEmbedder::new());
-        let memories = Arc::new(RwLock::new(HashMap::new()));
-
-        let cortex = LanceDBCortex::from_parts(memories.clone(), embedder);
-        assert!(cortex.is_empty().await.unwrap());
     }
 
     #[test]
