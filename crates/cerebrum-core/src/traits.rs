@@ -7,6 +7,9 @@ use async_trait::async_trait;
 pub trait Embedder: Send + Sync {
     /// Embed text into a vector.
     async fn embed(&self, text: &str) -> Result<Vec<f32>>;
+
+    /// Return the dimensionality of vectors produced by this embedder.
+    fn dimension(&self) -> usize;
 }
 
 /// Trait for a memory storage tier (Synapse or Cortex).

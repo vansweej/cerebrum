@@ -1,12 +1,6 @@
 use crate::error::{CerebrumError, Result};
+use crate::traits::Embedder;
 use async_trait::async_trait;
-
-/// Trait for embedding text into vector space.
-#[async_trait]
-pub trait Embedder: Send + Sync {
-    /// Embed text into a vector.
-    async fn embed(&self, text: &str) -> Result<Vec<f32>>;
-}
 
 /// Mock embedder for development and testing.
 ///
@@ -70,6 +64,10 @@ impl Embedder for MockEmbedder {
         }
 
         Ok(embedding)
+    }
+
+    fn dimension(&self) -> usize {
+        384
     }
 }
 
