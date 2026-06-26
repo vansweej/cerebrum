@@ -210,6 +210,83 @@ ollama pull nomic-embed-text
 - Monitor metrics to track average latency
 - Consider increasing Ollama's memory allocation if available
 
+## Deployment
+
+### Building the Package
+
+The flake provides reproducible builds via `rustPlatform.buildRustPackage`:
+
+```bash
+# Build the bare binary
+nix build .#cerebrum
+
+# Build the wrapped binary (recommended)
+nix build .#cerebrum-wrapped
+
+# Build the default output (wrapped)
+nix build .
+```
+
+### Data Directory
+
+The wrapped binary automatically handles the data directory:
+
+- **Location:** `$XDG_DATA_HOME/cerebrum` (defaults to `~/.local/share/cerebrum`)
+- **Created on first run:** The wrapper creates the directory if it doesn't exist
+- **Database:** LanceDB stores the `memories` table at `$XDG_DATA_HOME/cerebrum/data/cerebrum/memories.lance`
+
+### Home-Manager Integration
+
+To deploy Cerebrum via home-manager, add it to your flake inputs and home configuration:
+
+```nix
+# flake.nix
+{
+  inputs = {
+    cerebrum-mcp.url = "github:<your-username>/cerebrum-mcp";
+  };
+
+  outputs = { self, home-manager, cerebrum-mcp, ... }:
+    {
+      homeConfigurations."user@hostname" = home-manager.lib.homeManagerConfiguration {
+        # ... other config ...
+        modules = [
+          {
+            home.packages = [ cerebrum-mcp.packages.${pkgs.system}.default ];
+          }
+        ];
+      };
+    };
+}
+```
+
+Then configure your MCP client (e.g., Claude Desktop) to use the `cerebrum` binary:
+
+```json
+{
+  "mcpServers": {
+    "cerebrum": {
+      "command": "cerebrum"
+    }
+  }
+}
+```
+
+### Runtime Requirements
+
+- **No external services:** The binary uses `MockEmbedder` (hash-based, offline)
+- **No model files:** Embeddings are deterministic and don't require model downloads
+- **Writable data directory:** The wrapper ensures data persists to `$XDG_DATA_HOME/cerebrum`
+
+### Build Dependencies
+
+The flake automatically provides:
+- `pkg-config` (for openssl linking)
+- `protobuf` (for lance/prost codegen)
+- `openssl` (for reqwest native-tls)
+
+All dependencies are resolved from `Cargo.lock` for reproducibility.
+
 ## Development
 
 All commands should be run inside the Nix dev shell:
