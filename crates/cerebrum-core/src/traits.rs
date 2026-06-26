@@ -35,4 +35,10 @@ pub trait MemoryStore: Send + Sync {
         // Use a non-empty query to avoid embedder validation errors
         self.retrieve("*", usize::MAX).await
     }
+
+    /// Get the number of memories in the store.
+    async fn len(&self) -> Result<usize> {
+        // Default implementation: count items in list
+        Ok(self.list().await?.len())
+    }
 }

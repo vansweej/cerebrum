@@ -1,5 +1,5 @@
 use cerebrum_core::{
-    CortexMemory, MemoryEntry, MemoryId, MemoryOrchestrator, MemoryStore, MemoryTier, MockEmbedder,
+    LanceDBCortex, MemoryEntry, MemoryId, MemoryOrchestrator, MemoryStore, MemoryTier, MockEmbedder,
     SynapseMemory,
 };
 use std::collections::HashMap;
@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 #[tokio::test]
 async fn test_synapse_basic_workflow() {
-    let synapse = SynapseMemory::new();
+    let synapse = SynapseMemory::new(Arc::new(MockEmbedder::new()));
 
     // Store multiple memories
     let id1 = MemoryId::new();
@@ -32,7 +32,7 @@ async fn test_synapse_basic_workflow() {
 
 #[tokio::test]
 async fn test_synapse_semantic_search() {
-    let synapse = SynapseMemory::new();
+    let synapse = SynapseMemory::new(Arc::new(MockEmbedder::new()));
 
     let id1 = MemoryId::new();
     let embedding1 = vec![0.1; 384];
@@ -56,7 +56,7 @@ async fn test_synapse_semantic_search() {
 
 #[tokio::test]
 async fn test_synapse_salience_ranking() {
-    let synapse = SynapseMemory::new();
+    let synapse = SynapseMemory::new(Arc::new(MockEmbedder::new()));
 
     let id1 = MemoryId::new();
     let embedding = vec![0.5; 384];
@@ -80,21 +80,25 @@ async fn test_synapse_salience_ranking() {
 }
 
 // ============================================================================
-// CortexMemory Integration Tests
+// LanceDBCortex Integration Tests
 // ============================================================================
 
 #[tokio::test]
 async fn test_cortex_basic_workflow() {
     let embedder: Arc<dyn cerebrum_core::Embedder> = Arc::new(MockEmbedder::new());
-    let cortex = CortexMemory::new("/tmp/test_cortex_basic", embedder)
+    let cortex = LanceDBCortex::new("/tmp/test_cortex_basic", embedder)
         .await
         .unwrap();
 
     let id1 = MemoryId::new();
     let id2 = MemoryId::new();
 
-    let entry1 = MemoryEntry::new(id1, "First memory".to_string());
-    let entry2 = MemoryEntry::new(id2, "Second memory".to_string());
+    let entry1 = MemoryEntry::builder(id1, "First memory".to_string())
+        .embedding(vec![0.1; 384])
+        .build();
+    let entry2 = MemoryEntry::builder(id2, "Second memory".to_string())
+        .embedding(vec![0.2; 384])
+        .build();
 
     cortex.store(entry1).await.unwrap();
     cortex.store(entry2).await.unwrap();
@@ -105,18 +109,20 @@ async fn test_cortex_basic_workflow() {
 #[tokio::test]
 async fn test_cortex_search_by_salience() {
     let embedder: Arc<dyn cerebrum_core::Embedder> = Arc::new(MockEmbedder::new());
-    let cortex = CortexMemory::new("/tmp/test_cortex_salience", embedder)
+    let cortex = LanceDBCortex::new("/tmp/test_cortex_salience", embedder)
         .await
         .unwrap();
 
     let id1 = MemoryId::new();
     let entry1 = MemoryEntry::builder(id1, "High priority".to_string())
         .salience(0.95)
+        .embedding(vec![0.1; 384])
         .build();
 
     let id2 = MemoryId::new();
     let entry2 = MemoryEntry::builder(id2, "Low priority".to_string())
         .salience(0.1)
+        .embedding(vec![0.2; 384])
         .build();
 
     cortex.store(entry1).await.unwrap();
@@ -130,14 +136,16 @@ async fn test_cortex_search_by_salience() {
 #[tokio::test]
 async fn test_cortex_persistence_simulation() {
     let embedder: Arc<dyn cerebrum_core::Embedder> = Arc::new(MockEmbedder::new());
-    let cortex = CortexMemory::new("/tmp/test_cortex_persist", embedder)
+    let cortex = LanceDBCortex::new("/tmp/test_cortex_persist", embedder)
         .await
         .unwrap();
 
     // Store multiple memories
     for i in 0..5 {
         let id = MemoryId::new();
-        let entry = MemoryEntry::new(id, format!("Memory {}", i));
+        let entry = MemoryEntry::builder(id, format!("Memory {}", i))
+            .embedding(vec![0.1 + (i as f32 * 0.01); 384])
+            .build();
         cortex.store(entry).await.unwrap();
     }
 

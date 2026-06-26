@@ -14,13 +14,15 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct SynapseMemory {
     memories: Arc<RwLock<HashMap<MemoryId, MemoryEntry>>>,
+    embedder: Arc<dyn Embedder>,
 }
 
 impl SynapseMemory {
     /// Create a new empty Synapse memory store.
-    pub fn new() -> Self {
+    pub fn new(embedder: Arc<dyn Embedder>) -> Self {
         Self {
             memories: Arc::new(RwLock::new(HashMap::new())),
+            embedder,
         }
     }
 
@@ -66,7 +68,7 @@ impl SynapseMemory {
 
 impl Default for SynapseMemory {
     fn default() -> Self {
-        Self::new()
+        Self::new(Arc::new(crate::embedder::MockEmbedder::new()))
     }
 }
 
@@ -78,9 +80,8 @@ impl MemoryStore for SynapseMemory {
     }
 
     async fn retrieve(&self, query: &str, limit: usize) -> Result<Vec<MemoryEntry>> {
-        // Generate embedding for query (before acquiring lock to avoid Send issues)
-        let embedder = crate::embedder::MockEmbedder::new();
-        let query_embedding: Vec<f32> = embedder.embed(query).await?;
+        // Generate embedding for query using the configured embedder
+        let query_embedding: Vec<f32> = self.embedder.embed(query).await?;
 
         let memories = self.memories.read();
 
@@ -119,9 +120,8 @@ impl MemoryStore for SynapseMemory {
         scope: &MemoryScope,
         limit: usize,
     ) -> Result<Vec<MemoryEntry>> {
-        // Generate embedding for query (before acquiring lock to avoid Send issues)
-        let embedder = crate::embedder::MockEmbedder::new();
-        let query_embedding: Vec<f32> = embedder.embed(query).await?;
+        // Generate embedding for query using the configured embedder
+        let query_embedding: Vec<f32> = self.embedder.embed(query).await?;
 
         let memories = self.memories.read();
 
@@ -164,17 +164,22 @@ impl MemoryStore for SynapseMemory {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::embedder::MockEmbedder;
+
+    fn create_synapse() -> SynapseMemory {
+        SynapseMemory::new(Arc::new(MockEmbedder::new()))
+    }
 
     #[tokio::test]
     async fn test_synapse_new() {
-        let synapse = SynapseMemory::new();
+        let synapse = create_synapse();
         assert!(synapse.is_empty());
         assert_eq!(synapse.len(), 0);
     }
 
     #[tokio::test]
     async fn test_synapse_store_and_retrieve() {
-        let synapse = SynapseMemory::new();
+        let synapse = create_synapse();
         let id = MemoryId::new();
         let embedding = vec![0.1; 384];
         let entry = MemoryEntry::builder(id, "Test memory".to_string())
@@ -190,7 +195,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_synapse_delete() {
-        let synapse = SynapseMemory::new();
+        let synapse = create_synapse();
         let id = MemoryId::new();
         let entry = MemoryEntry::new(id, "Test memory".to_string());
 
@@ -203,7 +208,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_synapse_clear() {
-        let synapse = SynapseMemory::new();
+        let synapse = create_synapse();
 
         for i in 0..5 {
             let id = MemoryId::new();
@@ -218,7 +223,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_synapse_list() {
-        let synapse = SynapseMemory::new();
+        let synapse = create_synapse();
         let id1 = MemoryId::new();
         let id2 = MemoryId::new();
 
@@ -246,14 +251,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_synapse_retrieve_empty() {
-        let synapse = SynapseMemory::new();
+        let synapse = create_synapse();
         let results = synapse.retrieve("test", 10).await.unwrap();
         assert!(results.is_empty());
     }
 
     #[tokio::test]
     async fn test_synapse_retrieve_with_salience() {
-        let synapse = SynapseMemory::new();
+        let synapse = create_synapse();
 
         let id1 = MemoryId::new();
         let embedding = vec![0.1; 384];
@@ -279,7 +284,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_synapse_retrieve_by_scope_global() {
-        let synapse = SynapseMemory::new();
+        let synapse = create_synapse();
 
         let id1 = MemoryId::new();
         let embedding = vec![0.1; 384];
@@ -307,7 +312,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_synapse_retrieve_by_scope_user() {
-        let synapse = SynapseMemory::new();
+        let synapse = create_synapse();
 
         let id1 = MemoryId::new();
         let embedding = vec![0.1; 384];
@@ -336,7 +341,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_synapse_retrieve_by_scope_agent() {
-        let synapse = SynapseMemory::new();
+        let synapse = create_synapse();
 
         let id1 = MemoryId::new();
         let embedding = vec![0.1; 384];
@@ -365,7 +370,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_synapse_retrieve_by_scope_session() {
-        let synapse = SynapseMemory::new();
+        let synapse = create_synapse();
 
         let id1 = MemoryId::new();
         let embedding = vec![0.1; 384];

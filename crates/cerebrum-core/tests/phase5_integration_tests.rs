@@ -4,16 +4,17 @@ use cerebrum_core::{
     AccessBasedDecay, DecayContext, DecayStrategy, FrequencyBasedPromotion, HybridDecay,
     HybridPromotion, IdentitySummarizer, ImportanceBasedPromotion, KeywordSummarizer,
     LengthBasedSummarizer, MemoryEntry, MemoryId, MemoryScope, MemoryStore, MemoryTier,
-    PromotionContext, PromotionStrategy, RecencyBasedPromotion, SentenceBasedSummarizer,
+    MockEmbedder, PromotionContext, PromotionStrategy, RecencyBasedPromotion, SentenceBasedSummarizer,
     Summarizer, SynapseMemory,
 };
 use chrono::Utc;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[tokio::test]
 async fn test_promotion_with_scope_filtering() {
     // Test that promotion respects scope boundaries
-    let synapse = SynapseMemory::new();
+    let synapse = SynapseMemory::new(Arc::new(MockEmbedder::new()));
 
     let id1 = MemoryId::new();
     let embedding = vec![0.1; 384];
@@ -237,7 +238,7 @@ async fn test_memory_entry_with_all_phase5_features() {
 #[tokio::test]
 async fn test_scope_filtering_with_retrieval() {
     // Test scope filtering during retrieval
-    let synapse = SynapseMemory::new();
+    let synapse = SynapseMemory::new(Arc::new(MockEmbedder::new()));
 
     // Create memories with different scopes
     let global_id = MemoryId::new();
@@ -414,7 +415,7 @@ async fn test_promotion_and_decay_together() {
 #[tokio::test]
 async fn test_scope_filtering_empty_results() {
     // Test scope filtering when no memories match
-    let synapse = SynapseMemory::new();
+    let synapse = SynapseMemory::new(Arc::new(MockEmbedder::new()));
 
     let id = MemoryId::new();
     let embedding = vec![0.1; 384];

@@ -1,4 +1,3 @@
-use crate::cortex::CortexMemory;
 use crate::embedder::Embedder;
 use crate::error::Result;
 use crate::lancedb_cortex::LanceDBCortex;
@@ -14,19 +13,20 @@ use std::sync::Arc;
 /// tier management, blended search, and promotion logic.
 pub struct MemoryOrchestrator {
     synapse: Arc<SynapseMemory>,
-    cortex: Arc<CortexMemory>,
+    cortex: Arc<dyn MemoryStore>,
     embedder: Arc<dyn Embedder>,
 }
 
 impl MemoryOrchestrator {
-    /// Create a new MemoryOrchestrator with both tiers.
+    /// Create a new MemoryOrchestrator with LanceDB Cortex backend.
     ///
     /// # Arguments
     /// * `cortex_db_path` - Path to the Cortex database directory
     /// * `embedder` - Embedder instance for generating embeddings
     pub async fn new(cortex_db_path: &str, embedder: Arc<dyn Embedder>) -> Result<Self> {
-        let synapse = Arc::new(SynapseMemory::new());
-        let cortex = Arc::new(CortexMemory::new(cortex_db_path, embedder.clone()).await?);
+        let synapse = Arc::new(SynapseMemory::new(embedder.clone()));
+        let cortex: Arc<dyn MemoryStore> =
+            Arc::new(LanceDBCortex::new(cortex_db_path, embedder.clone()).await?);
 
         Ok(Self {
             synapse,
@@ -41,15 +41,9 @@ impl MemoryOrchestrator {
     /// * `db_path` - Path to the LanceDB database directory
     /// * `embedder` - Embedder instance for generating embeddings
     pub async fn with_lancedb_cortex(db_path: &str, embedder: Arc<dyn Embedder>) -> Result<Self> {
-        let synapse = Arc::new(SynapseMemory::new());
-
-        // Create LanceDB Cortex backend
-        let _cortex_trait: Arc<dyn MemoryStore> =
+        let synapse = Arc::new(SynapseMemory::new(embedder.clone()));
+        let cortex: Arc<dyn MemoryStore> =
             Arc::new(LanceDBCortex::new(db_path, embedder.clone()).await?);
-
-        // For now, we use CortexMemory as the default implementation
-        // In a future version, we can make this configurable via trait objects
-        let cortex = Arc::new(CortexMemory::new(db_path, embedder.clone()).await?);
 
         Ok(Self {
             synapse,
@@ -69,7 +63,7 @@ impl MemoryOrchestrator {
     }
 
     /// Get a reference to the Cortex tier.
-    pub fn cortex(&self) -> Arc<CortexMemory> {
+    pub fn cortex(&self) -> Arc<dyn MemoryStore> {
         Arc::clone(&self.cortex)
     }
 
@@ -536,7 +530,9 @@ mod tests {
             .expect("Failed to create orchestrator");
 
         let cortex = orchestrator.cortex();
-        assert_eq!(cortex.len().await.unwrap(), 0);
+        // Verify we can use the cortex trait object
+        let is_empty = cortex.list().await.expect("Failed to list").is_empty();
+        assert!(is_empty);
     }
 
     #[tokio::test]

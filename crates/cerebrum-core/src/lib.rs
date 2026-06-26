@@ -1,4 +1,3 @@
-pub mod cortex;
 pub mod decay;
 pub mod embedder;
 pub mod error;
@@ -16,7 +15,6 @@ pub mod traits;
 pub mod utils;
 
 // Re-export commonly used types
-pub use cortex::CortexMemory;
 pub use decay::{
     AccessBasedDecay, DecayContext, DecayStrategy, HybridDecay, RelevanceBasedDecay, TimeBasedDecay,
 };
