@@ -347,8 +347,42 @@ mod tests {
         ctx.recall_metrics.record_failure(50);
         ctx.memorize_metrics.record_success(75);
 
-        // This should not panic
-        ctx.log_summary();
+        // Wrap in scoped DEBUG subscriber to evaluate log macro arguments
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .finish();
+        tracing::subscriber::with_default(subscriber, || {
+            ctx.log_summary();
+        });
+    }
+
+    #[test]
+    fn test_operation_metrics_default() {
+        let metrics = OperationMetrics::default();
+        assert_eq!(metrics.total_operations(), 0);
+        assert_eq!(metrics.success_rate(), 100.0);
+    }
+
+    #[test]
+    fn test_observability_context_default() {
+        let ctx = ObservabilityContext::default();
+        assert_eq!(ctx.remember_metrics.total_operations(), 0);
+    }
+
+    #[test]
+    fn test_operation_timer_record_success() {
+        let m = OperationMetrics::new();
+        OperationTimer::new().record_success(&m);
+        assert_eq!(m.successful_operations(), 1);
+        assert_eq!(m.total_operations(), 1);
+    }
+
+    #[test]
+    fn test_operation_timer_record_failure() {
+        let m = OperationMetrics::new();
+        OperationTimer::new().record_failure(&m, "boom");
+        assert_eq!(m.failed_operations(), 1);
+        assert_eq!(m.total_operations(), 1);
     }
 
     #[test]
