@@ -8,7 +8,7 @@
 
 use cerebrum_core::{
     embedder::MockEmbedder,
-    models::{MemoryId, MemoryTier},
+    models::{MemoryId, MemoryScope, MemoryTier},
     orchestrator::MemoryOrchestrator,
     Embedder,
 };
@@ -276,7 +276,9 @@ async fn test_remember_tool_integration() {
     let mut metadata = HashMap::new();
     metadata.insert("priority".to_string(), "high".to_string());
 
-    let result = orchestrator.remember(content, metadata).await;
+    let result = orchestrator
+        .remember(content, metadata, MemoryScope::Global)
+        .await;
     assert!(result.is_ok());
 
     let memory_id = result.unwrap();
@@ -289,10 +291,18 @@ async fn test_recall_tool_integration() {
 
     // Store memories first
     let _ = orchestrator
-        .remember("Meeting at 3pm".to_string(), HashMap::new())
+        .remember(
+            "Meeting at 3pm".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await;
     let _ = orchestrator
-        .remember("Lunch with team".to_string(), HashMap::new())
+        .remember(
+            "Lunch with team".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await;
 
     // Recall memories
@@ -309,7 +319,11 @@ async fn test_memorize_tool_integration() {
 
     // Store a memory in Synapse
     let memory_id = orchestrator
-        .remember("Important data".to_string(), HashMap::new())
+        .remember(
+            "Important data".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .unwrap();
 
@@ -324,7 +338,11 @@ async fn test_forget_tool_integration() {
 
     // Store a memory
     let memory_id = orchestrator
-        .remember("Temporary memory".to_string(), HashMap::new())
+        .remember(
+            "Temporary memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .unwrap();
 
@@ -345,10 +363,18 @@ async fn test_end_session_tool_integration() {
 
     // Store memories
     let _ = orchestrator
-        .remember("Session memory 1".to_string(), HashMap::new())
+        .remember(
+            "Session memory 1".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await;
     let _ = orchestrator
-        .remember("Session memory 2".to_string(), HashMap::new())
+        .remember(
+            "Session memory 2".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await;
 
     // End session with promotion threshold
@@ -370,7 +396,11 @@ async fn test_blended_search_synapse_and_cortex() {
 
     // Store in Synapse
     let synapse_id = orchestrator
-        .remember("Synapse memory".to_string(), HashMap::new())
+        .remember(
+            "Synapse memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .unwrap();
 
@@ -379,7 +409,11 @@ async fn test_blended_search_synapse_and_cortex() {
 
     // Store another in Synapse
     let _ = orchestrator
-        .remember("Another synapse memory".to_string(), HashMap::new())
+        .remember(
+            "Another synapse memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await;
 
     // Recall should find both
@@ -396,7 +430,7 @@ async fn test_recall_deduplication() {
     // Store same content in both tiers (simulating duplication)
     let content = "Duplicate test".to_string();
     let id1 = orchestrator
-        .remember(content.clone(), HashMap::new())
+        .remember(content.clone(), HashMap::new(), MemoryScope::Global)
         .await
         .unwrap();
     let _ = orchestrator.memorize(id1).await;
@@ -445,7 +479,11 @@ async fn test_recall_empty_query() {
 
     // Store a memory first
     let _ = orchestrator
-        .remember("Test content".to_string(), HashMap::new())
+        .remember(
+            "Test content".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await;
 
     // Recall with empty query - may return error or empty results
@@ -469,7 +507,7 @@ async fn test_recall_with_zero_limit() {
 
     // Store a memory
     let _ = orchestrator
-        .remember("Test".to_string(), HashMap::new())
+        .remember("Test".to_string(), HashMap::new(), MemoryScope::Global)
         .await;
 
     // Recall with zero limit
@@ -487,7 +525,7 @@ async fn test_recall_with_large_limit() {
     // Store multiple memories
     for i in 0..5 {
         let _ = orchestrator
-            .remember(format!("Memory {}", i), HashMap::new())
+            .remember(format!("Memory {}", i), HashMap::new(), MemoryScope::Global)
             .await;
     }
 
@@ -508,7 +546,7 @@ async fn test_remember_assigns_synapse_tier() {
     let (orchestrator, _dir) = create_test_orchestrator().await;
 
     let _memory_id = orchestrator
-        .remember("Test".to_string(), HashMap::new())
+        .remember("Test".to_string(), HashMap::new(), MemoryScope::Global)
         .await
         .unwrap();
 
@@ -525,7 +563,7 @@ async fn test_memorize_assigns_cortex_tier() {
     let (orchestrator, _dir) = create_test_orchestrator().await;
 
     let memory_id = orchestrator
-        .remember("Test".to_string(), HashMap::new())
+        .remember("Test".to_string(), HashMap::new(), MemoryScope::Global)
         .await
         .unwrap();
 
@@ -551,10 +589,18 @@ async fn test_recall_ranking_by_similarity() {
 
     // Store memories with varying similarity to query
     let _ = orchestrator
-        .remember("exact match query".to_string(), HashMap::new())
+        .remember(
+            "exact match query".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await;
     let _ = orchestrator
-        .remember("different content".to_string(), HashMap::new())
+        .remember(
+            "different content".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await;
 
     // Recall with specific query
@@ -578,13 +624,21 @@ async fn test_auto_promotion_on_session_end() {
 
     // Store high-salience memory (default salience is 0.5)
     let _high_salience_id = orchestrator
-        .remember("High salience memory".to_string(), HashMap::new())
+        .remember(
+            "High salience memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .unwrap();
 
     // Store low-salience memory
     let _low_salience_id = orchestrator
-        .remember("Low salience memory".to_string(), HashMap::new())
+        .remember(
+            "Low salience memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .unwrap();
 
@@ -609,7 +663,11 @@ async fn test_remember_generates_embedding() {
     let (orchestrator, _dir) = create_test_orchestrator().await;
 
     let _memory_id = orchestrator
-        .remember("Test content".to_string(), HashMap::new())
+        .remember(
+            "Test content".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .unwrap();
 
@@ -628,7 +686,7 @@ async fn test_embedding_consistency() {
 
     let content = "Consistent content".to_string();
     let _id1 = orchestrator
-        .remember(content.clone(), HashMap::new())
+        .remember(content.clone(), HashMap::new(), MemoryScope::Global)
         .await
         .unwrap();
 
@@ -638,7 +696,7 @@ async fn test_embedding_consistency() {
 
     // Store again with same content
     let id2 = orchestrator
-        .remember(content.clone(), HashMap::new())
+        .remember(content.clone(), HashMap::new(), MemoryScope::Global)
         .await
         .unwrap();
 
@@ -667,7 +725,7 @@ async fn test_memory_metadata_preservation() {
     metadata.insert("priority".to_string(), "high".to_string());
 
     let _memory_id = orchestrator
-        .remember(content.clone(), metadata.clone())
+        .remember(content.clone(), metadata.clone(), MemoryScope::Global)
         .await
         .unwrap();
 
@@ -684,11 +742,11 @@ async fn test_memory_id_uniqueness() {
     let (orchestrator, _dir) = create_test_orchestrator().await;
 
     let id1 = orchestrator
-        .remember("Content 1".to_string(), HashMap::new())
+        .remember("Content 1".to_string(), HashMap::new(), MemoryScope::Global)
         .await
         .unwrap();
     let id2 = orchestrator
-        .remember("Content 2".to_string(), HashMap::new())
+        .remember("Content 2".to_string(), HashMap::new(), MemoryScope::Global)
         .await
         .unwrap();
 
@@ -700,7 +758,7 @@ async fn test_memory_timestamp_generation() {
     let (orchestrator, _dir) = create_test_orchestrator().await;
 
     let _memory_id = orchestrator
-        .remember("Test".to_string(), HashMap::new())
+        .remember("Test".to_string(), HashMap::new(), MemoryScope::Global)
         .await
         .unwrap();
 
@@ -723,7 +781,7 @@ async fn test_synapse_and_cortex_lengths() {
 
     // Add to Synapse
     let id1 = orchestrator
-        .remember("Memory 1".to_string(), HashMap::new())
+        .remember("Memory 1".to_string(), HashMap::new(), MemoryScope::Global)
         .await
         .unwrap();
     assert_eq!(orchestrator.synapse_len().await.unwrap(), 1);

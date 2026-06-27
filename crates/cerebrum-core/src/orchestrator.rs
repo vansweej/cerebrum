@@ -158,6 +158,7 @@ impl MemoryOrchestrator {
         &self,
         content: String,
         metadata: HashMap<String, String>,
+        scope: MemoryScope,
     ) -> Result<MemoryId> {
         let id = MemoryId::new();
 
@@ -168,12 +169,22 @@ impl MemoryOrchestrator {
             .embed(&format!("{}{}", self.document_prefix, content))
             .await?;
 
-        // Create entry with embedding
-        let mut entry = MemoryEntry::builder(id, content)
+        // Capture session id from scope for source_session_id.
+        let session_id = match &scope {
+            MemoryScope::Session(s) => Some(s.clone()),
+            _ => None,
+        };
+
+        let mut builder = MemoryEntry::builder(id, content)
             .embedding(embedding)
             .tier(MemoryTier::Synapse)
-            .build();
+            .scope(scope);
 
+        if let Some(sid) = session_id {
+            builder = builder.source_session_id(sid);
+        }
+
+        let mut entry = builder.build();
         entry.metadata = metadata;
 
         // Store in Synapse (short-term, in-memory)
@@ -402,7 +413,11 @@ mod tests {
             .expect("Failed to create orchestrator");
 
         let id = orchestrator
-            .remember("Test memory".to_string(), HashMap::new())
+            .remember(
+                "Test memory".to_string(),
+                HashMap::new(),
+                MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 
@@ -421,7 +436,11 @@ mod tests {
             .expect("Failed to create orchestrator");
 
         orchestrator
-            .remember("Test memory".to_string(), HashMap::new())
+            .remember(
+                "Test memory".to_string(),
+                HashMap::new(),
+                MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 
@@ -442,7 +461,11 @@ mod tests {
             .expect("Failed to create orchestrator");
 
         let id = orchestrator
-            .remember("Test memory".to_string(), HashMap::new())
+            .remember(
+                "Test memory".to_string(),
+                HashMap::new(),
+                MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 
@@ -464,7 +487,11 @@ mod tests {
             .expect("Failed to create orchestrator");
 
         let id = orchestrator
-            .remember("Test memory".to_string(), HashMap::new())
+            .remember(
+                "Test memory".to_string(),
+                HashMap::new(),
+                MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 
@@ -485,12 +512,20 @@ mod tests {
 
         // Store memories with different salience levels
         let _id1 = orchestrator
-            .remember("Important memory".to_string(), HashMap::new())
+            .remember(
+                "Important memory".to_string(),
+                HashMap::new(),
+                MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 
         let _id2 = orchestrator
-            .remember("Less important memory".to_string(), HashMap::new())
+            .remember(
+                "Less important memory".to_string(),
+                HashMap::new(),
+                MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 
@@ -504,12 +539,20 @@ mod tests {
         orchestrator.forget(_id2).await.ok();
 
         let _id1 = orchestrator
-            .remember("Important memory".to_string(), HashMap::new())
+            .remember(
+                "Important memory".to_string(),
+                HashMap::new(),
+                MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 
         let _id2 = orchestrator
-            .remember("Less important memory".to_string(), HashMap::new())
+            .remember(
+                "Less important memory".to_string(),
+                HashMap::new(),
+                MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 
@@ -538,13 +581,21 @@ mod tests {
 
         // Store in Synapse
         let _id1 = orchestrator
-            .remember("Synapse memory".to_string(), HashMap::new())
+            .remember(
+                "Synapse memory".to_string(),
+                HashMap::new(),
+                MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 
         // Store in Cortex
         let id2 = orchestrator
-            .remember("Cortex memory".to_string(), HashMap::new())
+            .remember(
+                "Cortex memory".to_string(),
+                HashMap::new(),
+                MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 
@@ -571,7 +622,11 @@ mod tests {
             .expect("Failed to create orchestrator");
 
         let id = orchestrator
-            .remember("Test memory".to_string(), HashMap::new())
+            .remember(
+                "Test memory".to_string(),
+                HashMap::new(),
+                MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 
@@ -580,7 +635,11 @@ mod tests {
 
         // Store another copy in Synapse
         let _id2 = orchestrator
-            .remember("Test memory".to_string(), HashMap::new())
+            .remember(
+                "Test memory".to_string(),
+                HashMap::new(),
+                MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 
@@ -646,12 +705,20 @@ mod tests {
             .expect("Failed to create orchestrator");
 
         let _id1 = orchestrator
-            .remember("First memory".to_string(), HashMap::new())
+            .remember(
+                "First memory".to_string(),
+                HashMap::new(),
+                MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 
         let _id2 = orchestrator
-            .remember("Second memory".to_string(), HashMap::new())
+            .remember(
+                "Second memory".to_string(),
+                HashMap::new(),
+                MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 
@@ -672,7 +739,11 @@ mod tests {
             .expect("Failed to create orchestrator");
 
         let id = orchestrator
-            .remember("Test memory".to_string(), HashMap::new())
+            .remember(
+                "Test memory".to_string(),
+                HashMap::new(),
+                MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 
@@ -698,7 +769,11 @@ mod tests {
             .expect("Failed to create orchestrator");
 
         let id = orchestrator
-            .remember("Test memory".to_string(), HashMap::new())
+            .remember(
+                "Test memory".to_string(),
+                HashMap::new(),
+                MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 
@@ -718,7 +793,11 @@ mod tests {
             .expect("Failed to create orchestrator");
 
         let _id = orchestrator
-            .remember("Test memory".to_string(), HashMap::new())
+            .remember(
+                "Test memory".to_string(),
+                HashMap::new(),
+                MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 
@@ -739,7 +818,11 @@ mod tests {
             .expect("Failed to create orchestrator");
 
         let _id = orchestrator
-            .remember("Test memory".to_string(), HashMap::new())
+            .remember(
+                "Test memory".to_string(),
+                HashMap::new(),
+                MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 
@@ -750,5 +833,55 @@ mod tests {
 
         // After end_session, synapse should be empty
         assert_eq!(orchestrator.synapse_len().await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_remember_session_scope_isolation() {
+        let dir = tempfile::tempdir().unwrap();
+        let embedder: Arc<dyn Embedder> = Arc::new(crate::embedder::MockEmbedder::new());
+        let orchestrator = MemoryOrchestrator::new(embedder, dir.path(), "memories", 384)
+            .await
+            .expect("Failed to create orchestrator");
+
+        // Store a memory under session "alpha".
+        orchestrator
+            .remember(
+                "alpha-only secret".to_string(),
+                HashMap::new(),
+                MemoryScope::Session("alpha".to_string()),
+            )
+            .await
+            .expect("Failed to remember");
+
+        // Owning session "alpha" must see it.
+        let alpha = orchestrator
+            .recall_by_scope(
+                "secret".to_string(),
+                MemoryScope::Session("alpha".to_string()),
+                10,
+            )
+            .await
+            .expect("recall_by_scope alpha");
+        assert_eq!(alpha.len(), 1, "owning session must see its memory");
+        assert_eq!(alpha[0].scope, MemoryScope::Session("alpha".to_string()));
+        assert_eq!(
+            alpha[0].source_session_id.as_deref(),
+            Some("alpha"),
+            "source_session_id must be populated from session scope"
+        );
+
+        // A different session "beta" must NOT see alpha's memory.
+        let beta = orchestrator
+            .recall_by_scope(
+                "secret".to_string(),
+                MemoryScope::Session("beta".to_string()),
+                10,
+            )
+            .await
+            .expect("recall_by_scope beta");
+        assert!(
+            beta.is_empty(),
+            "different session must not see another session's memory"
+        );
     }
 }

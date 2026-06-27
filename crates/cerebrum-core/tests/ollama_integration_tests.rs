@@ -7,9 +7,7 @@
 //! - Recall returns results from both tiers
 //! - Synapse is offline (no Ollama calls for Synapse-only recall)
 
-use cerebrum_core::{
-    Config, MemoryEntry, MemoryId, MemoryOrchestrator, MemoryScope, MemoryStore,
-};
+use cerebrum_core::{Config, MemoryEntry, MemoryId, MemoryOrchestrator, MemoryScope, MemoryStore};
 use wiremock::{
     matchers::{body_string_contains, method, path},
     Mock, MockServer, ResponseTemplate,
@@ -34,7 +32,10 @@ async fn test_from_config_with_mocked_ollama() {
     config.ollama_url = mock_server.uri();
 
     let orchestrator = MemoryOrchestrator::from_config(&config).await;
-    assert!(orchestrator.is_ok(), "from_config should succeed with mocked Ollama");
+    assert!(
+        orchestrator.is_ok(),
+        "from_config should succeed with mocked Ollama"
+    );
 }
 
 /// Test that warmup probe validates embedding dimension.
@@ -97,7 +98,11 @@ async fn test_remember_applies_document_prefix() {
         .await;
 
     let result = orchestrator
-        .remember("test content".to_string(), Default::default())
+        .remember(
+            "test content".to_string(),
+            Default::default(),
+            MemoryScope::Global,
+        )
         .await;
     assert!(result.is_ok(), "remember should succeed");
 }
@@ -167,17 +172,30 @@ async fn test_remember_stores_in_synapse() {
 
     // Remember a memory
     let id = orchestrator
-        .remember("test memory".to_string(), Default::default())
+        .remember(
+            "test memory".to_string(),
+            Default::default(),
+            MemoryScope::Global,
+        )
         .await
         .expect("Failed to remember");
 
     // Verify it's in Synapse (short-term)
-    let synapse_len = orchestrator.synapse_len().await.expect("Failed to get synapse len");
+    let synapse_len = orchestrator
+        .synapse_len()
+        .await
+        .expect("Failed to get synapse len");
     assert_eq!(synapse_len, 1, "Memory should be in Synapse");
 
     // Verify it's NOT in Cortex yet (Cortex is long-term, accessed via memorize)
-    let cortex_len = orchestrator.cortex_len().await.expect("Failed to get cortex len");
-    assert_eq!(cortex_len, 0, "Memory should not be in Cortex until promoted");
+    let cortex_len = orchestrator
+        .cortex_len()
+        .await
+        .expect("Failed to get cortex len");
+    assert_eq!(
+        cortex_len, 0,
+        "Memory should not be in Cortex until promoted"
+    );
 
     // Verify we can retrieve it from Synapse
     let synapse_list = orchestrator
@@ -215,7 +233,11 @@ async fn test_recall_returns_from_both_tiers() {
 
     // Remember a memory (goes to Synapse)
     orchestrator
-        .remember("synapse memory".to_string(), Default::default())
+        .remember(
+            "synapse memory".to_string(),
+            Default::default(),
+            MemoryScope::Global,
+        )
         .await
         .expect("Failed to remember");
 
@@ -225,14 +247,15 @@ async fn test_recall_returns_from_both_tiers() {
         .await
         .expect("Failed to list synapse");
     let id = synapse_list[0].id;
-    orchestrator
-        .memorize(id)
-        .await
-        .expect("Failed to memorize");
+    orchestrator.memorize(id).await.expect("Failed to memorize");
 
     // Remember another memory (stays in Synapse)
     orchestrator
-        .remember("another synapse memory".to_string(), Default::default())
+        .remember(
+            "another synapse memory".to_string(),
+            Default::default(),
+            MemoryScope::Global,
+        )
         .await
         .expect("Failed to remember");
 
@@ -272,7 +295,11 @@ async fn test_recall_by_scope_filters_correctly() {
 
     // Store memories with different scopes
     let _id1 = orchestrator
-        .remember("global memory".to_string(), Default::default())
+        .remember(
+            "global memory".to_string(),
+            Default::default(),
+            MemoryScope::Global,
+        )
         .await
         .expect("Failed to remember");
 
@@ -291,7 +318,10 @@ async fn test_recall_by_scope_filters_correctly() {
         .await
         .expect("Failed to recall by scope");
 
-    assert!(!results.is_empty(), "Should return memories with Global scope");
+    assert!(
+        !results.is_empty(),
+        "Should return memories with Global scope"
+    );
 }
 
 /// Test that Synapse is offline (no Ollama calls for Synapse-only recall).
@@ -345,7 +375,11 @@ async fn test_synapse_offline_no_ollama_calls() {
         .await
         .expect("Failed to retrieve from Synapse");
 
-    assert_eq!(results.len(), 1, "Should retrieve from Synapse without Ollama");
+    assert_eq!(
+        results.len(),
+        1,
+        "Should retrieve from Synapse without Ollama"
+    );
 }
 
 /// Test that end_session clears Synapse and promotes high-salience memories.
@@ -375,7 +409,11 @@ async fn test_end_session_clears_synapse_and_promotes() {
 
     // Remember a high-salience memory
     let _id = orchestrator
-        .remember("important memory".to_string(), Default::default())
+        .remember(
+            "important memory".to_string(),
+            Default::default(),
+            MemoryScope::Global,
+        )
         .await
         .expect("Failed to remember");
 
@@ -436,19 +474,28 @@ async fn test_forget_removes_from_both_tiers() {
 
     // Remember a memory (goes to Synapse)
     let id = orchestrator
-        .remember("test memory".to_string(), Default::default())
+        .remember(
+            "test memory".to_string(),
+            Default::default(),
+            MemoryScope::Global,
+        )
         .await
         .expect("Failed to remember");
 
     // Promote it to Cortex
-    orchestrator
-        .memorize(id)
-        .await
-        .expect("Failed to memorize");
+    orchestrator.memorize(id).await.expect("Failed to memorize");
 
     // Verify it's in both tiers
-    assert_eq!(orchestrator.synapse_len().await.unwrap(), 0, "Should be removed from Synapse after promotion");
-    assert_eq!(orchestrator.cortex_len().await.unwrap(), 1, "Should be in Cortex after promotion");
+    assert_eq!(
+        orchestrator.synapse_len().await.unwrap(),
+        0,
+        "Should be removed from Synapse after promotion"
+    );
+    assert_eq!(
+        orchestrator.cortex_len().await.unwrap(),
+        1,
+        "Should be in Cortex after promotion"
+    );
 
     // Forget it
     orchestrator.forget(id).await.expect("Failed to forget");

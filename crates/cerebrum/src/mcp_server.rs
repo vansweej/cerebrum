@@ -24,6 +24,25 @@ impl CerebrumHandler {
         Self { orchestrator }
     }
 
+    /// Parse a scope string into a MemoryScope. Defaults to Global when None.
+    /// Returns Err(message) for malformed non-empty scope strings.
+    fn parse_scope(scope_str: Option<&str>) -> Result<cerebrum_core::MemoryScope, String> {
+        match scope_str {
+            None | Some("global") => Ok(cerebrum_core::MemoryScope::Global),
+            Some(s) => {
+                if let Some(id) = s.strip_prefix("user:") {
+                    Ok(cerebrum_core::MemoryScope::User(id.to_string()))
+                } else if let Some(id) = s.strip_prefix("agent:") {
+                    Ok(cerebrum_core::MemoryScope::Agent(id.to_string()))
+                } else if let Some(id) = s.strip_prefix("session:") {
+                    Ok(cerebrum_core::MemoryScope::Session(id.to_string()))
+                } else {
+                    Err("Invalid scope format. Use 'global', 'user:<id>', 'agent:<id>', or 'session:<id>'".to_string())
+                }
+            }
+        }
+    }
+
     /// Get the remember tool definition
     fn remember_tool() -> Tool {
         let schema = json!({
@@ -38,6 +57,10 @@ impl CerebrumHandler {
                     "description": "Importance score (0.0-1.0), defaults to 0.5",
                     "minimum": 0.0,
                     "maximum": 1.0
+                },
+                "scope": {
+                    "type": "string",
+                    "description": "Memory scope: 'global', 'user:<id>', 'agent:<id>', or 'session:<id>'. Defaults to 'global'."
                 }
             },
             "required": ["content"]
@@ -186,10 +209,25 @@ impl CerebrumHandler {
 
         let _salience = args.get("salience").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
 
+        // Parse optional scope (defaults to Global).
+        let scope = match Self::parse_scope(args.get("scope").and_then(|v| v.as_str())) {
+            Ok(s) => s,
+            Err(msg) => {
+                return Ok(CallToolResult::error(vec![Annotated::new(
+                    RawContent::text(msg),
+                    None,
+                )]));
+            }
+        };
+
         // Build metadata HashMap (empty for now, can be extended)
         let metadata = HashMap::new();
 
-        match self.orchestrator.remember(content.clone(), metadata).await {
+        match self
+            .orchestrator
+            .remember(content.clone(), metadata, scope)
+            .await
+        {
             Ok(memory_id) => {
                 info!("Memory stored: {}", memory_id);
                 let response = json!({
@@ -381,20 +419,15 @@ impl CerebrumHandler {
 
         let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
 
-        // Parse scope string
-        let scope = if scope_str == "global" {
-            cerebrum_core::MemoryScope::Global
-        } else if let Some(user_id) = scope_str.strip_prefix("user:") {
-            cerebrum_core::MemoryScope::User(user_id.to_string())
-        } else if let Some(agent_id) = scope_str.strip_prefix("agent:") {
-            cerebrum_core::MemoryScope::Agent(agent_id.to_string())
-        } else if let Some(session_id) = scope_str.strip_prefix("session:") {
-            cerebrum_core::MemoryScope::Session(session_id.to_string())
-        } else {
-            return Ok(CallToolResult::error(vec![Annotated::new(
-                RawContent::text("Invalid scope format. Use 'global', 'user:<id>', 'agent:<id>', or 'session:<id>'".to_string()),
-                None,
-            )]));
+        // Parse scope string (shared with handle_remember).
+        let scope = match Self::parse_scope(Some(scope_str)) {
+            Ok(s) => s,
+            Err(msg) => {
+                return Ok(CallToolResult::error(vec![Annotated::new(
+                    RawContent::text(msg),
+                    None,
+                )]));
+            }
         };
 
         match self.orchestrator.recall_by_scope(query, scope, limit).await {
@@ -648,7 +681,11 @@ mod tests {
         );
 
         orchestrator
-            .remember("Test memory".to_string(), HashMap::new())
+            .remember(
+                "Test memory".to_string(),
+                HashMap::new(),
+                cerebrum_core::MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 
@@ -674,7 +711,11 @@ mod tests {
         );
 
         let memory_id = orchestrator
-            .remember("Test memory".to_string(), HashMap::new())
+            .remember(
+                "Test memory".to_string(),
+                HashMap::new(),
+                cerebrum_core::MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 
@@ -719,7 +760,11 @@ mod tests {
         );
 
         let memory_id = orchestrator
-            .remember("Test memory".to_string(), HashMap::new())
+            .remember(
+                "Test memory".to_string(),
+                HashMap::new(),
+                cerebrum_core::MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 
@@ -744,7 +789,11 @@ mod tests {
         );
 
         orchestrator
-            .remember("Test memory".to_string(), HashMap::new())
+            .remember(
+                "Test memory".to_string(),
+                HashMap::new(),
+                cerebrum_core::MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 
@@ -839,7 +888,11 @@ mod tests {
         );
 
         orchestrator
-            .remember("Test memory".to_string(), HashMap::new())
+            .remember(
+                "Test memory".to_string(),
+                HashMap::new(),
+                cerebrum_core::MemoryScope::Global,
+            )
             .await
             .expect("Failed to remember");
 

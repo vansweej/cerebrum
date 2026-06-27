@@ -27,7 +27,11 @@ async fn test_integration_lancedb_persistence() {
 
     // Store data
     let id = orchestrator
-        .remember("Persistent memory".to_string(), HashMap::new())
+        .remember(
+            "Persistent memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .expect("Failed to remember");
 
@@ -73,12 +77,20 @@ async fn test_integration_migration_workflow() {
 
     // Store multiple memories
     let _id1 = orchestrator
-        .remember("First memory".to_string(), HashMap::new())
+        .remember(
+            "First memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .expect("Failed to remember");
 
     let _id2 = orchestrator
-        .remember("Second memory".to_string(), HashMap::new())
+        .remember(
+            "Second memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .expect("Failed to remember");
 
@@ -164,12 +176,20 @@ async fn test_integration_end_to_end_workflow() {
 
     // 1. Store memories
     let id1 = orchestrator
-        .remember("Important memory".to_string(), HashMap::new())
+        .remember(
+            "Important memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .expect("Failed to remember");
 
     let id2 = orchestrator
-        .remember("Another memory".to_string(), HashMap::new())
+        .remember(
+            "Another memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .expect("Failed to remember");
 
@@ -249,7 +269,11 @@ async fn test_integration_memory_scope_filtering() {
 
     // Store memory
     let _id = orchestrator
-        .remember("Scoped memory".to_string(), HashMap::new())
+        .remember(
+            "Scoped memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .expect("Failed to remember");
 
@@ -279,8 +303,12 @@ async fn test_integration_concurrent_operations() {
     for i in 0..5 {
         let orch = Arc::clone(&orchestrator);
         let handle = tokio::spawn(async move {
-            orch.remember(format!("Concurrent memory {}", i), HashMap::new())
-                .await
+            orch.remember(
+                format!("Concurrent memory {}", i),
+                HashMap::new(),
+                MemoryScope::Global,
+            )
+            .await
         });
         handles.push(handle);
     }
@@ -310,7 +338,11 @@ async fn test_integration_memory_decay() {
         .expect("Failed to create orchestrator");
 
     let _id = orchestrator
-        .remember("Decaying memory".to_string(), HashMap::new())
+        .remember(
+            "Decaying memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .expect("Failed to remember");
 
@@ -345,13 +377,21 @@ async fn test_integration_blended_search_across_tiers() {
 
     // Store in Synapse
     let _id1 = orchestrator
-        .remember("Synapse memory".to_string(), HashMap::new())
+        .remember(
+            "Synapse memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .expect("Failed to remember");
 
     // Store in Cortex
     let id2 = orchestrator
-        .remember("Cortex memory".to_string(), HashMap::new())
+        .remember(
+            "Cortex memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .expect("Failed to remember");
 
@@ -383,7 +423,11 @@ async fn test_integration_metadata_preservation() {
     metadata.insert("priority".to_string(), "high".to_string());
 
     let id = orchestrator
-        .remember("Memory with metadata".to_string(), metadata.clone())
+        .remember(
+            "Memory with metadata".to_string(),
+            metadata.clone(),
+            MemoryScope::Global,
+        )
         .await
         .expect("Failed to remember");
 
@@ -542,7 +586,11 @@ async fn test_integration_memory_promotion_with_salience() {
         .expect("Failed to create orchestrator");
 
     let id = orchestrator
-        .remember("High salience memory".to_string(), HashMap::new())
+        .remember(
+            "High salience memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .expect("Failed to remember");
 

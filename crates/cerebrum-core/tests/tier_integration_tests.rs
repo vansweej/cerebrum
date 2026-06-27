@@ -1,5 +1,5 @@
 use cerebrum_core::{
-    LanceDBCortex, MemoryEntry, MemoryId, MemoryOrchestrator, MemoryStore, MemoryTier,
+    LanceDBCortex, MemoryEntry, MemoryId, MemoryOrchestrator, MemoryScope, MemoryStore, MemoryTier,
     MockEmbedder, SynapseMemory,
 };
 use std::collections::HashMap;
@@ -170,12 +170,20 @@ async fn test_orchestrator_remember_and_recall() {
 
     // Remember multiple memories
     let _id1 = orchestrator
-        .remember("First memory".to_string(), HashMap::new())
+        .remember(
+            "First memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .unwrap();
 
     let _id2 = orchestrator
-        .remember("Second memory".to_string(), HashMap::new())
+        .remember(
+            "Second memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .unwrap();
 
@@ -196,7 +204,11 @@ async fn test_orchestrator_promotion_workflow() {
 
     // Remember in Synapse
     let id = orchestrator
-        .remember("Important memory".to_string(), HashMap::new())
+        .remember(
+            "Important memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .unwrap();
 
@@ -219,7 +231,11 @@ async fn test_orchestrator_forget_from_synapse() {
         .unwrap();
 
     let id = orchestrator
-        .remember("Temporary memory".to_string(), HashMap::new())
+        .remember(
+            "Temporary memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .unwrap();
 
@@ -239,7 +255,11 @@ async fn test_orchestrator_forget_from_cortex() {
         .unwrap();
 
     let id = orchestrator
-        .remember("Memory to forget".to_string(), HashMap::new())
+        .remember(
+            "Memory to forget".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .unwrap();
 
@@ -261,13 +281,21 @@ async fn test_orchestrator_blended_search() {
 
     // Store in Synapse
     let _id1 = orchestrator
-        .remember("Synapse memory".to_string(), HashMap::new())
+        .remember(
+            "Synapse memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .unwrap();
 
     // Store in Cortex
     let id2 = orchestrator
-        .remember("Cortex memory".to_string(), HashMap::new())
+        .remember(
+            "Cortex memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .unwrap();
 
@@ -289,12 +317,12 @@ async fn test_orchestrator_end_session_clears_synapse() {
 
     // Store multiple memories
     let _id1 = orchestrator
-        .remember("Memory 1".to_string(), HashMap::new())
+        .remember("Memory 1".to_string(), HashMap::new(), MemoryScope::Global)
         .await
         .unwrap();
 
     let _id2 = orchestrator
-        .remember("Memory 2".to_string(), HashMap::new())
+        .remember("Memory 2".to_string(), HashMap::new(), MemoryScope::Global)
         .await
         .unwrap();
 
@@ -316,12 +344,16 @@ async fn test_orchestrator_end_session_auto_promotes() {
 
     // Store memories
     let id1 = orchestrator
-        .remember("Important".to_string(), HashMap::new())
+        .remember("Important".to_string(), HashMap::new(), MemoryScope::Global)
         .await
         .unwrap();
 
     let id2 = orchestrator
-        .remember("Less important".to_string(), HashMap::new())
+        .remember(
+            "Less important".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .unwrap();
 
@@ -335,12 +367,16 @@ async fn test_orchestrator_end_session_auto_promotes() {
     orchestrator.forget(id2).await.ok();
 
     let _id1 = orchestrator
-        .remember("Important".to_string(), HashMap::new())
+        .remember("Important".to_string(), HashMap::new(), MemoryScope::Global)
         .await
         .unwrap();
 
     let _id2 = orchestrator
-        .remember("Less important".to_string(), HashMap::new())
+        .remember(
+            "Less important".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .unwrap();
 
@@ -364,7 +400,11 @@ async fn test_orchestrator_metadata_preservation() {
     metadata.insert("context".to_string(), "conversation".to_string());
 
     let _id = orchestrator
-        .remember("Memory with metadata".to_string(), metadata.clone())
+        .remember(
+            "Memory with metadata".to_string(),
+            metadata.clone(),
+            MemoryScope::Global,
+        )
         .await
         .unwrap();
 
@@ -381,7 +421,11 @@ async fn test_orchestrator_embedding_generation() {
         .unwrap();
 
     let _id = orchestrator
-        .remember("Test memory".to_string(), HashMap::new())
+        .remember(
+            "Test memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .unwrap();
 
@@ -399,7 +443,11 @@ async fn test_orchestrator_tier_assignment() {
         .unwrap();
 
     let id = orchestrator
-        .remember("Test memory".to_string(), HashMap::new())
+        .remember(
+            "Test memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .unwrap();
 
@@ -422,17 +470,17 @@ async fn test_orchestrator_multiple_promotions() {
 
     // Store multiple memories
     let _id1 = orchestrator
-        .remember("Memory 1".to_string(), HashMap::new())
+        .remember("Memory 1".to_string(), HashMap::new(), MemoryScope::Global)
         .await
         .unwrap();
 
     let _id2 = orchestrator
-        .remember("Memory 2".to_string(), HashMap::new())
+        .remember("Memory 2".to_string(), HashMap::new(), MemoryScope::Global)
         .await
         .unwrap();
 
     let _id3 = orchestrator
-        .remember("Memory 3".to_string(), HashMap::new())
+        .remember("Memory 3".to_string(), HashMap::new(), MemoryScope::Global)
         .await
         .unwrap();
 
@@ -458,7 +506,7 @@ async fn test_orchestrator_recall_limit() {
     // Store 10 memories
     for i in 0..10 {
         let _ = orchestrator
-            .remember(format!("Memory {}", i), HashMap::new())
+            .remember(format!("Memory {}", i), HashMap::new(), MemoryScope::Global)
             .await
             .unwrap();
     }
@@ -479,12 +527,20 @@ async fn test_orchestrator_cross_tier_recall() {
 
     // Store in both tiers
     let _id1 = orchestrator
-        .remember("Synapse memory".to_string(), HashMap::new())
+        .remember(
+            "Synapse memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .unwrap();
 
     let id2 = orchestrator
-        .remember("Cortex memory".to_string(), HashMap::new())
+        .remember(
+            "Cortex memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .unwrap();
 
@@ -550,7 +606,11 @@ async fn test_orchestrator_session_isolation() {
 
     // Store in Synapse
     let _id1 = orchestrator
-        .remember("Session 1 memory".to_string(), HashMap::new())
+        .remember(
+            "Session 1 memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .unwrap();
 
@@ -563,7 +623,11 @@ async fn test_orchestrator_session_isolation() {
 
     // Store new memory in new session
     let _id2 = orchestrator
-        .remember("Session 2 memory".to_string(), HashMap::new())
+        .remember(
+            "Session 2 memory".to_string(),
+            HashMap::new(),
+            MemoryScope::Global,
+        )
         .await
         .unwrap();
 
